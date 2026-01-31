@@ -10,8 +10,11 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 import "dotenv/config";
+import { env } from "./env";
 
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { setupVite } from "./vite";
 import { serveStatic } from "./static";
@@ -20,6 +23,32 @@ import { createServer } from "http";
 
 const app = express();
 const httpServer = createServer(app);
+
+// Security Headers
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled for dev flexibility, can be tightened in prod
+}));
+
+// Rate Limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: "Too many requests from this IP, please try again after 15 minutes",
+});
+
+app.use("/api", apiLimiter);
+
+// Health Check
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    env: env.NODE_ENV,
+  });
+});
 
 
 declare module "http" {
@@ -78,7 +107,11 @@ app.use((req, res, next) => {
 const runServer = async () => {
   try {
     console.log("Starting server initialization...");
+    const { initializeDatabase } = await import("./db");
+    await initializeDatabase();
+
     console.log("Registering routes...");
+
     await registerRoutes(httpServer, app);
     console.log("Routes registered successfully.");
 
@@ -109,7 +142,7 @@ const runServer = async () => {
     // Other ports are firewalled. Default to 5000 if not specified.
     // this serves both the API and the client.
     // It is the only port that is not firewalled.
-    const port = parseInt(process.env.PORT || "5000", 10);
+    const port = parseInt(env.PORT, 10);
     httpServer.listen(
       {
         port,

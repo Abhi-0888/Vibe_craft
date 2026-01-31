@@ -4,6 +4,9 @@ import ChainMap from "@/pages/ChainMap";
 import GuardianGame from "@/pages/GuardianGame";
 import MinerTycoon from "@/pages/MinerTycoon";
 import PredictionArena from "@/pages/PredictionArena";
+import NftGallery from "@/pages/NftGallery";
+import QuestBoard from "@/pages/QuestBoard";
+import TeamHub from "@/pages/TeamHub";
 import NotFound from "@/pages/not-found";
 
 import { Switch, Route } from "wouter";
@@ -49,9 +52,11 @@ export default function Home() {
           <Route path="/guardian" component={GuardianGame} />
           <Route path="/miner" component={MinerTycoon} />
           <Route path="/prediction" component={PredictionArena} />
+          <Route path="/nfts" component={NftGallery} />
+          <Route path="/quests" component={QuestBoard} />
+          <Route path="/teams" component={TeamHub} />
           <Route component={NotFound} />
         </Switch>
-
       </main>
     </div>
   );

@@ -2,12 +2,12 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useMe } from "@/hooks/use-game";
 import { cn } from "@/lib/utils";
-import { 
-  LayoutDashboard, 
-  Map as MapIcon, 
-  ShieldCheck, 
-  Pickaxe, 
-  TrendingUp, 
+import {
+  LayoutDashboard,
+  Map as MapIcon,
+  ShieldCheck,
+  Pickaxe,
+  TrendingUp,
   LogOut,
   Cpu,
   Coins
@@ -21,9 +21,12 @@ export function Sidebar() {
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/map", label: "Chain Map", icon: MapIcon },
+    { href: "/miner", label: "Mining Hub", icon: Pickaxe },
+    { href: "/nfts", label: "NFT Gallery", icon: Cpu },
+    { href: "/quests", label: "Quests", icon: ShieldCheck },
     { href: "/guardian", label: "Guardian", icon: ShieldCheck },
-    { href: "/miner", label: "Miner Tycoon", icon: Pickaxe },
     { href: "/prediction", label: "Predictions", icon: TrendingUp },
+    { href: "/teams", label: "Teams", icon: MapIcon },
   ];
 
   return (

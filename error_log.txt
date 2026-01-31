@@ -1,7 +1,0 @@
-Starting test...
-FAILURE:
-Message: getaddrinfo ENOTFOUND db.orhoqyupelfgccolzcib.supabase.co
-Code: ENOTFOUND
-Stack: Error: getaddrinfo ENOTFOUND db.orhoqyupelfgccolzcib.supabase.co
-    at D:\SrmAP\Fullstack\QuaiOrbit\node_modules\pg-pool\index.js:45:11
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)

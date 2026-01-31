@@ -1,26 +1,54 @@
 
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-console.log("Importing schema in db.ts...");
 import * as schema from "@shared/schema";
-console.log("Schema imported successfully.");
 
 const { Pool } = pg;
 
-console.log("Initializing database initialization logic...");
 const connectionString = process.env.DATABASE_URL;
 
 export let pool: pg.Pool | null = null;
 export let db: any = null;
+export let isInitialized = false;
 
-try {
-  // DISABLED: Database pool initialization is causing crashes on Windows when port 6543/5432 is blocked.
-  // We are forcing in-memory mode for now to ensure stability.
-  console.log("Database pool initialization SKIPPED for resilience. Running in in-memory mode.");
-  pool = null;
-  db = null;
-} catch (error) {
-  console.error("Unexpected error during db initialization logic:", error);
-  pool = null;
-  db = null;
+export async function initializeDatabase() {
+  if (isInitialized) return { db, pool };
+
+  if (!connectionString) {
+    console.warn("DATABASE_URL not set. Running in in-memory mode.");
+    isInitialized = true;
+    return { db: null, pool: null };
+  }
+
+  try {
+    console.log("Creating database connection pool...");
+    pool = new Pool({
+      connectionString,
+      ssl: connectionString.includes("supabase.co") || connectionString.includes("pooler.supabase.com")
+        ? { rejectUnauthorized: false }
+        : undefined,
+      connectionTimeoutMillis: 3000,
+    });
+
+    pool.on('error', (err) => {
+      console.error('Background Database Pool Error:', err.message);
+    });
+
+    console.log("Probing database connectivity (3s timeout)...");
+    const client = await pool.connect();
+    console.log("Database connectivity verified.");
+    client.release();
+
+    db = drizzle(pool, { schema });
+    console.log("Drizzle adapter initialized successfully.");
+  } catch (error: any) {
+    console.error("⚠️ DATABASE PROBE FAILED. Falling back to in-memory mode.");
+    console.error(`Status: ${error.code || 'UNKNOWN'} - ${error.message}`);
+    pool = null;
+    db = null;
+  } finally {
+    isInitialized = true;
+  }
+
+  return { db, pool };
 }
