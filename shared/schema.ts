@@ -5,7 +5,7 @@ import { z } from "zod";
 
 // === TABLE DEFINITIONS ===
 
-export const users = pgTable("game_users", {
+export const game_users = pgTable("game_users", {
   id: serial("id").primaryKey(),
   authId: text("auth_id").notNull().unique(), // Link to Replit Auth User ID
   username: text("username").notNull(),
@@ -52,7 +52,7 @@ export const predictions = pgTable("predictions", {
 
 // === SCHEMAS ===
 
-export const insertUserSchema = createInsertSchema(users).omit({ 
+export const insertUserSchema = createInsertSchema(game_users).omit({ 
   id: true, 
   createdAt: true, 
   tokens: true, 
@@ -79,7 +79,7 @@ export const insertPredictionSchema = createInsertSchema(predictions).omit({
 
 // === EXPLICIT API TYPES ===
 
-export type User = typeof users.$inferSelect;
+export type User = typeof game_users.$inferSelect;
 export type Chain = typeof chains.$inferSelect;
 export type Stake = typeof stakes.$inferSelect;
 export type Prediction = typeof predictions.$inferSelect;
@@ -90,3 +90,6 @@ export type CreatePredictionRequest = z.infer<typeof insertPredictionSchema>;
 export interface MinerUpgradeRequest {
   type: 'gpu' | 'asic' | 'farm';
 }
+
+// Re-export Auth models as well
+export * from "./models/auth";

@@ -1,7 +1,7 @@
 
 import { db } from "./db";
 import { 
-  users, chains, stakes, predictions,
+  game_users as users, chains, stakes, predictions,
   type User, type Chain, type Stake, type Prediction,
   type CreateStakeRequest, type CreatePredictionRequest
 } from "@shared/schema";
