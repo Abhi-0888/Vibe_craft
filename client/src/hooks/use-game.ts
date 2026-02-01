@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
+import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import {
   type User,
   type Chain,
@@ -22,11 +23,7 @@ import {
 export function useChains() {
   return useQuery({
     queryKey: [api.chains.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.chains.list.path);
-      if (!res.ok) throw new Error("Failed to fetch chains");
-      return api.chains.list.responses[200].parse(await res.json());
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
     refetchInterval: 5000,
   });
 }
@@ -35,12 +32,7 @@ export function useChains() {
 export function useMe() {
   return useQuery({
     queryKey: [api.user.me.path],
-    queryFn: async () => {
-      const res = await fetch(api.user.me.path);
-      if (res.status === 401) return null;
-      if (!res.ok) throw new Error("Failed to fetch user");
-      return api.user.me.responses[200].parse(await res.json());
-    },
+    queryFn: getQueryFn({ on401: "returnNull" }),
   });
 }
 
@@ -48,11 +40,9 @@ export function useMe() {
 
 export function useMiningSession(userId?: number) {
   return useQuery({
-    queryKey: ["/api/mining/active", userId],
+    queryKey: ["/api/mining/active"],
     queryFn: async () => {
-      // In a real app, the server knows the user from the session
-      const res = await fetch(api.mining.session.start.path, { method: 'POST' });
-      if (!res.ok) throw new Error("Failed to get/start mining session");
+      const res = await apiRequest('POST', api.mining.session.start.path);
       return res.json() as Promise<MiningSession>;
     },
     enabled: !!userId,
@@ -63,12 +53,7 @@ export function useMiningClick() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { clicks: number, sessionId: number }) => {
-      const res = await fetch(api.mining.session.click.path, {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Click failed");
+      const res = await apiRequest('POST', api.mining.session.click.path, data);
       return res.json() as Promise<{ tokensEarned: number, user: User }>;
     },
     onSuccess: (data) => {
@@ -79,12 +64,8 @@ export function useMiningClick() {
 
 export function useMiningUpgrades(userId?: number) {
   return useQuery({
-    queryKey: [api.mining.upgrades.list.path, userId],
-    queryFn: async () => {
-      const res = await fetch(`${api.mining.upgrades.list.path}?userId=${userId}`);
-      if (!res.ok) throw new Error("Failed to fetch upgrades");
-      return res.json() as Promise<MiningUpgrade[]>;
-    },
+    queryKey: [api.mining.upgrades.list.path],
+    queryFn: getQueryFn({ on401: "throw" }),
     enabled: !!userId,
   });
 }
@@ -93,12 +74,7 @@ export function usePurchaseUpgrade() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { upgradeType: string, upgradeName: string }) => {
-      const res = await fetch(api.mining.upgrades.purchase.path, {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Purchase failed");
+      const res = await apiRequest('POST', api.mining.upgrades.purchase.path, data);
       return res.json() as Promise<MiningUpgrade>;
     },
     onSuccess: () => {
@@ -113,22 +89,14 @@ export function usePurchaseUpgrade() {
 export function useNftCollections() {
   return useQuery({
     queryKey: [api.nfts.collections.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.nfts.collections.list.path);
-      if (!res.ok) throw new Error("Failed to fetch NFT collections");
-      return res.json() as Promise<NftCollection[]>;
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 }
 
 export function useMyNfts() {
   return useQuery({
     queryKey: [api.nfts.user.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.nfts.user.list.path);
-      if (!res.ok) throw new Error("Failed to fetch your NFTs");
-      return res.json() as Promise<(UserNft & { nft: NftCollection })[]>;
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 }
 
@@ -136,12 +104,7 @@ export function useEquipNft() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (userNftId: number) => {
-      const res = await fetch(api.nfts.user.equip.path, {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userNftId }),
-      });
-      if (!res.ok) throw new Error("Equip failed");
+      const res = await apiRequest('POST', api.nfts.user.equip.path, { userNftId });
       return res.json();
     },
     onSuccess: () => {
@@ -156,22 +119,14 @@ export function useEquipNft() {
 export function useQuests() {
   return useQuery({
     queryKey: [api.quests.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.quests.list.path);
-      if (!res.ok) throw new Error("Failed to fetch quests");
-      return res.json() as Promise<Quest[]>;
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 }
 
 export function useMyQuestProgress() {
   return useQuery({
     queryKey: [api.quests.user.progress.path],
-    queryFn: async () => {
-      const res = await fetch(api.quests.user.progress.path);
-      if (!res.ok) throw new Error("Failed to fetch quest progress");
-      return res.json() as Promise<(UserQuestProgress & { quest: Quest })[]>;
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 }
 
@@ -179,12 +134,7 @@ export function useClaimQuest() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (questId: number) => {
-      const res = await fetch(api.quests.user.claim.path, {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questId }),
-      });
-      if (!res.ok) throw new Error("Claim failed");
+      const res = await apiRequest('POST', api.quests.user.claim.path, { questId });
       return res.json();
     },
     onSuccess: () => {
@@ -213,11 +163,7 @@ export function useLeaderboard(category: string, period: string) {
 export function useTeams() {
   return useQuery({
     queryKey: [api.teams.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.teams.list.path);
-      if (!res.ok) throw new Error("Failed to fetch teams");
-      return res.json() as Promise<Team[]>;
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 }
 
@@ -225,12 +171,7 @@ export function useCreateTeam() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { name: string, description: string }) => {
-      const res = await fetch(api.teams.create.path, {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Team creation failed");
+      const res = await apiRequest('POST', api.teams.create.path, data);
       return res.json() as Promise<Team>;
     },
     onSuccess: () => {
@@ -243,11 +184,7 @@ export function useCreateTeam() {
 export function useMyStakes() {
   return useQuery({
     queryKey: [api.stakes.listMine.path],
-    queryFn: async () => {
-      const res = await fetch(api.stakes.listMine.path);
-      if (!res.ok) throw new Error("Failed to fetch stakes");
-      return api.stakes.listMine.responses[200].parse(await res.json());
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 }
 
@@ -257,11 +194,7 @@ export function useCreateStake() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateStakeRequest) => {
-      const res = await fetch(api.stakes.create.path, {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      const res = await apiRequest('POST', api.stakes.create.path, data);
       return res.json();
     },
     onSuccess: () => {
@@ -273,10 +206,7 @@ export function useCreateStake() {
 export function usePredictions() {
   return useQuery({
     queryKey: [api.predictions.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.predictions.list.path);
-      return res.json() as Promise<Prediction[]>;
-    },
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 }
 
@@ -284,11 +214,7 @@ export function useCreatePrediction() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreatePredictionRequest) => {
-      const res = await fetch(api.predictions.create.path, {
-        method: 'POST',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      const res = await apiRequest('POST', api.predictions.create.path, data);
       return res.json();
     },
     onSuccess: () => {

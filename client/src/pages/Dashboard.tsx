@@ -38,6 +38,18 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-3 items-center text-xs font-mono">
+        <a href="https://dominantstrategies.io/" target="_blank" rel="noreferrer" className="px-2 py-1 border border-border hover:border-primary transition-colors">
+          Dominant Strategies
+        </a>
+        <a href="https://qu.ai/#partners" target="_blank" rel="noreferrer" className="px-2 py-1 border border-border hover:border-primary transition-colors">
+          Quai Partners
+        </a>
+        <a href="https://docs.qu.ai/learn/introduction" target="_blank" rel="noreferrer" className="px-2 py-1 border border-border hover:border-primary transition-colors">
+          Quai Docs
+        </a>
+      </div>
+
       {/* KPI Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <CyberCard variant="glow" className="flex flex-col justify-between h-32 relative group">
@@ -53,8 +65,8 @@ export default function Dashboard() {
 
         <CyberCard className="flex flex-col justify-between h-32">
           <div className="flex justify-between items-start">
-            <span className="text-muted-foreground text-xs uppercase font-mono">My Crypto Asset</span>
-            <span className="text-yellow-500 font-bold">$QUAI</span>
+            <span className="text-muted-foreground text-xs uppercase font-mono">Qi Balance</span>
+            <span className="text-yellow-500 font-bold">Qi</span>
           </div>
           <div className="text-3xl font-display font-bold text-yellow-500">
             {user?.tokens?.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}

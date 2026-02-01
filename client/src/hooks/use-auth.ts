@@ -7,11 +7,15 @@ export interface AuthUser {
 }
 
 async function fetchUser(): Promise<AuthUser | null> {
+  const token = localStorage.getItem("auth_token");
   const response = await fetch("/api/auth/me", {
-    credentials: "include",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
 
   if (response.status === 401) {
+    localStorage.removeItem("auth_token");
     return null;
   }
 
@@ -26,9 +30,8 @@ async function fetchUser(): Promise<AuthUser | null> {
 async function logout(): Promise<void> {
   await fetch("/api/auth/logout", {
     method: "POST",
-    credentials: "include",
   });
-  window.location.reload();
+  localStorage.removeItem("auth_token");
 }
 
 export function useAuth() {
@@ -44,6 +47,7 @@ export function useAuth() {
     mutationFn: logout,
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/me"], null);
+      window.location.href = "/login";
     },
   });
 

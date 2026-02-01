@@ -16,30 +16,52 @@ export async function registerRoutes(
   // === AUTH SETUP ===
   console.log("Starting auth setup...");
   await setupAuth(app);
-  app.use(authMiddleware);
-  console.log("Auth setup completed.");
-
   console.log("Registering auth routes...");
   await registerAuthRoutes(app);
   console.log("Auth routes registered.");
+  app.use((req, res, next) => {
+    const p = req.path;
+    // Exclude public API routes
+    if (
+      p === "/api/auth/login" ||
+      p === "/api/auth/register" ||
+      p === "/api/auth/guest" ||
+      p === "/api/health"
+    ) {
+      return next();
+    }
+
+    // Only protect /api routes
+    if (p.startsWith("/api")) {
+      return authMiddleware(req as any, res, next);
+    }
+
+    // Non-API routes (SPA navigation) proceed normally
+    next();
+  });
+  console.log("Auth middleware applied.");
 
   // === MOCK DATA GENERATOR ===
   // Update chain stats periodically to simulate live network
   setInterval(async () => {
-    const chains = await storage.getChains();
-    for (const chain of chains) {
-      // Simulate TPS fluctuation
-      const newTps = Math.max(0, (chain.tps || 0) + (Math.random() - 0.5) * 50);
-      // Simulate Difficulty fluctuation
-      const newDiff = Math.max(1, (chain.difficulty || 0) + (Math.random() - 0.5) * 0.1);
-      // Simulate Block Time
-      const newBlockTime = new Date();
+    try {
+      const chains = await storage.getChains();
+      for (const chain of chains) {
+        // Simulate TPS fluctuation
+        const newTps = Math.max(0, (chain.tps || 0) + (Math.random() - 0.5) * 50);
+        // Simulate Difficulty fluctuation
+        const newDiff = Math.max(1, (chain.difficulty || 0) + (Math.random() - 0.5) * 0.1);
+        // Simulate Block Time
+        const newBlockTime = new Date();
 
-      await storage.updateChainStats(chain.id, {
-        tps: Number(newTps.toFixed(2)),
-        difficulty: Number(newDiff.toFixed(2)),
-        lastBlockTime: newBlockTime
-      });
+        await storage.updateChainStats(chain.id, {
+          tps: Number(newTps.toFixed(2)),
+          difficulty: Number(newDiff.toFixed(2)),
+          lastBlockTime: newBlockTime
+        });
+      }
+    } catch (error) {
+      console.error("Failed to update mock chain stats:", error);
     }
   }, 2000); // Update every 2s
 
@@ -275,7 +297,14 @@ export async function registerRoutes(
     if (!req.user) return res.status(401).send();
     const user = await getOrCreateGameUser(req);
     if (!user) return res.json([]);
-    const nfts = await storage.getUserNfts(user.id);
+    let nfts = await storage.getUserNfts(user.id);
+    if (nfts.length === 0) {
+      const cols = await storage.getNftCollections();
+      if (cols.length > 0) {
+        const minted = await storage.mintNft(user.id, cols[0].id);
+        nfts = await storage.getUserNfts(user.id);
+      }
+    }
     res.json(nfts);
   });
 

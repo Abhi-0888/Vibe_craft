@@ -1,7 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { users } from '@shared/models/auth';
+import { db } from './db';
+import { z } from 'zod';
+import { eq } from 'drizzle-orm';
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'dev-secret-key-change-in-production';
+const REFRESH_EXP_DAYS = 30;
 
 export interface AuthUser {
     id: string;
@@ -16,75 +22,119 @@ export interface AuthRequest extends Request {
 // Simple JWT-based auth middleware
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
     const token = req.headers.authorization?.replace('Bearer ', '');
-
     if (!token) {
-        // For development, create a guest user
-        req.user = {
-            id: 'guest-' + Date.now(),
-            username: 'Guest' + Math.floor(Math.random() * 1000),
-        };
-        return next();
+        return res.status(401).json({ message: 'Unauthorized' });
     }
-
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
         req.user = decoded;
         next();
-    } catch (error) {
-        // Invalid token, create guest user
-        req.user = {
-            id: 'guest-' + Date.now(),
-            username: 'Guest' + Math.floor(Math.random() * 1000),
-        };
-        next();
+    } catch {
+        return res.status(401).json({ message: 'Unauthorized' });
     }
 }
 
 // Generate JWT token
 export function generateToken(user: AuthUser): string {
-    return jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+    return jwt.sign(user, JWT_SECRET, { expiresIn: '15m' });
+}
+
+function setRefreshCookie(res: Response, payload: { id: string; tokenVersion: number }) {
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: `${REFRESH_EXP_DAYS}d` });
+    const isProd = process.env.NODE_ENV === 'production';
+    res.cookie('refresh_token', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isProd,
+        path: '/api/auth',
+        maxAge: REFRESH_EXP_DAYS * 24 * 60 * 60 * 1000,
+    });
+}
+
+function parseCookies(req: Request): Record<string, string> {
+    const header = req.headers.cookie;
+    if (!header) return {};
+    const out: Record<string, string> = {};
+    header.split(';').forEach(part => {
+        const [k, ...v] = part.trim().split('=');
+        out[k] = decodeURIComponent(v.join('='));
+    });
+    return out;
 }
 
 // Simple login/register
 export function setupAuth(app: any) {
-    // For now, just a placeholder
     console.log('Auth system initialized (Simple JWT)');
 }
 
 export function registerAuthRoutes(app: any) {
-    // Simple auth endpoints
-    app.post('/api/auth/login', (req: Request, res: Response) => {
-        const { username, email } = req.body;
-
+    const registerSchema = z.object({
+        email: z.string().email().transform(e => e.toLowerCase().trim()),
+        username: z.string().min(3),
+        password: z.string().min(8),
+    });
+    const loginSchema = z.object({
+        email: z.string().email().transform(e => e.toLowerCase().trim()),
+        password: z.string().min(8),
+    });
+    function hashPassword(password: string) {
+        const salt = crypto.randomBytes(16).toString('hex');
+        const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+        return `${salt}:${derived}`;
+    }
+    function verifyPassword(password: string, stored: string) {
+        const [salt, key] = stored.split(':');
+        const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+        return crypto.timingSafeEqual(Buffer.from(key, 'hex'), Buffer.from(derived, 'hex'));
+    }
+    app.post('/api/auth/register', async (req: Request, res: Response) => {
+        const parsed = registerSchema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+        if (!db) return res.status(500).json({ message: 'Database not ready' });
+        const existing = await db.select().from(users).where(eq(users.email, parsed.data.email));
+        if (existing.length > 0) return res.status(400).json({ message: 'Email already registered' });
+        const passwordHash = hashPassword(parsed.data.password);
+        const [row] = await db.insert(users).values({
+            email: parsed.data.email,
+            firstName: parsed.data.username,
+            passwordHash,
+            tokenVersion: 0,
+        }).returning();
         const user: AuthUser = {
-            id: 'user-' + Date.now(),
-            username: username || 'Player' + Math.floor(Math.random() * 10000),
-            email,
+            id: row.id,
+            username: parsed.data.username,
+            email: parsed.data.email,
         };
-
         const token = generateToken(user);
-
-        res.json({
-            user,
-            token,
-        });
+        setRefreshCookie(res, { id: row.id, tokenVersion: row.tokenVersion ?? 0 });
+        res.status(201).json({ user, token });
     });
 
-    app.post('/api/auth/register', (req: Request, res: Response) => {
-        const { username, email } = req.body;
-
+    app.post('/api/auth/guest', async (req: Request, res: Response) => {
+        const guestId = `guest_${crypto.randomBytes(4).toString('hex')}`;
         const user: AuthUser = {
-            id: 'user-' + Date.now(),
-            username: username || 'Player' + Math.floor(Math.random() * 10000),
-            email,
+            id: guestId,
+            username: `Guest_${guestId.slice(-4).toUpperCase()}`,
         };
-
         const token = generateToken(user);
-
-        res.json({
-            user,
-            token,
-        });
+        res.json({ user, token });
+    });
+    app.post('/api/auth/login', async (req: Request, res: Response) => {
+        const parsed = loginSchema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
+        if (!db) return res.status(500).json({ message: 'Database not ready' });
+        const [row] = await db.select().from(users).where(eq(users.email, parsed.data.email));
+        if (!row || !row.passwordHash) return res.status(401).json({ message: 'Invalid credentials' });
+        const ok = verifyPassword(parsed.data.password, row.passwordHash);
+        if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+        const user: AuthUser = {
+            id: row.id,
+            username: row.firstName || 'User',
+            email: row.email || undefined,
+        };
+        const token = generateToken(user);
+        setRefreshCookie(res, { id: row.id, tokenVersion: row.tokenVersion ?? 0 });
+        res.json({ user, token });
     });
 
     app.get('/api/auth/me', authMiddleware, (req: AuthRequest, res: Response) => {
@@ -92,6 +142,32 @@ export function registerAuthRoutes(app: any) {
     });
 
     app.post('/api/auth/logout', (req: Request, res: Response) => {
+        const isProd = process.env.NODE_ENV === 'production';
+        res.clearCookie('refresh_token', {
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: isProd,
+            path: '/api/auth',
+        });
         res.json({ success: true });
+    });
+
+    app.post('/api/auth/refresh', async (req: Request, res: Response) => {
+        try {
+            const cookies = parseCookies(req);
+            const token = cookies['refresh_token'];
+            if (!token) return res.status(401).json({ message: 'Unauthorized' });
+            const decoded = jwt.verify(token, JWT_SECRET) as { id: string; tokenVersion: number };
+            if (!db) return res.status(500).json({ message: 'Database not ready' });
+            const [row] = await db.select().from(users).where(eq(users.id, decoded.id));
+            if (!row || (row.tokenVersion ?? 0) !== decoded.tokenVersion) {
+                return res.status(401).json({ message: 'Unauthorized' });
+            }
+            const user: AuthUser = { id: row.id, username: row.firstName || 'User', email: row.email || undefined };
+            const access = generateToken(user);
+            res.json({ token: access });
+        } catch {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
     });
 }

@@ -11,36 +11,12 @@ import NotFound from "@/pages/not-found";
 
 import { Switch, Route } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
-import { useLocation } from "wouter";
-import { useToast } from "@/hooks/use-toast";
-import { isUnauthorizedError, redirectToLogin } from "@/lib/auth-utils";
+;
 
 export default function Home() {
-  const { user, isLoading, isAuthenticated } = useAuth();
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
+  const { user } = useAuth();
 
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      redirectToLogin(toast as any);
-    }
-
-  }, [isLoading, isAuthenticated, toast]);
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background text-primary">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-12 w-12 animate-spin" />
-          <div className="font-mono text-sm tracking-widest animate-pulse">INITIALIZING UPLINK...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) return null;
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">

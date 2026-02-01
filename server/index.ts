@@ -15,6 +15,7 @@ import { env } from "./env";
 import express, { type Request, Response, NextFunction } from "express";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite } from "./vite";
 import { serveStatic } from "./static";
@@ -27,6 +28,14 @@ const httpServer = createServer(app);
 // Security Headers
 app.use(helmet({
   contentSecurityPolicy: false, // Disabled for dev flexibility, can be tightened in prod
+}));
+
+// CORS
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
 // Rate Limiting
