@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, UserPlus, LogIn, Globe, Zap, Database, Wallet } from "lucide-react";
 import { BrowserProvider } from "quais";
+import { supabase } from "@/lib/supabase";
 
 export default function Login() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -29,23 +30,13 @@ export default function Login() {
       const signer = await provider.getSigner();
       const address = await signer.getAddress();
 
-      const res = await fetch("/api/auth/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address }),
+      localStorage.setItem("auth_token", "guest.token");
+      localStorage.setItem("guest_user", JSON.stringify({ id: "guest", username: address }));
+      toast({
+        title: "Wallet Connected",
+        description: `Linked: ${address.slice(0, 6)}...${address.slice(-4)}`,
       });
-
-      if (!res.ok) throw new Error("Wallet authentication failed");
-
-      const data = await res.json();
-      if (data?.token) {
-        localStorage.setItem("auth_token", data.token);
-        toast({
-          title: "Wallet Connected",
-          description: `Linked: ${address.slice(0, 6)}...${address.slice(-4)}`,
-        });
-        setTimeout(() => setLocation("/"), 300);
-      }
+      setTimeout(() => setLocation("/"), 300);
     } catch (err: any) {
       toast({
         title: "Connection Error",
@@ -60,33 +51,24 @@ export default function Login() {
   async function submit() {
     try {
       setLoading(true);
-      const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
-      const body: Record<string, string> = { email, password };
-      if (mode === "register") body.username = username || email.split("@")[0];
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+      if (mode === "register") {
+        const uname = username || email.split("@")[0];
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { username: uname } },
+        });
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+      toast({
+        title: mode === "login" ? "Welcome back" : "Account created",
+        description: "Redirecting to Command Center",
+        variant: "default",
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast({
-          title: "Authentication failed",
-          description: typeof data?.message === "string" ? data.message : "Check your credentials and try again",
-          variant: "destructive",
-        });
-        return;
-      }
-      const data = await res.json();
-      if (data?.token) {
-        localStorage.setItem("auth_token", data.token);
-        toast({
-          title: mode === "login" ? "Welcome back" : "Account created",
-          description: "Redirecting to Command Center",
-          variant: "default",
-        });
-        setTimeout(() => setLocation("/"), 300);
-      }
+      setTimeout(() => setLocation("/"), 300);
     } finally {
       setLoading(false);
     }
@@ -226,34 +208,13 @@ export default function Login() {
               onClick={async () => {
                 try {
                   setLoading(true);
-                  let res = await fetch("/api/auth/guest", {
-                    method: "GET",
-                    headers: { Accept: "application/json" },
+                  localStorage.setItem("auth_token", "guest.token");
+                  localStorage.setItem("guest_user", JSON.stringify({ id: "guest", username: "Guest" }));
+                  toast({
+                    title: "Guest Uplink Active",
+                    description: "Welcome to Sector Orbit",
                   });
-                  const ct = res.headers.get("content-type") || "";
-                  if (!res.ok || !ct.includes("application/json")) {
-                    res = await fetch("/api/auth/guest", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json", Accept: "application/json" },
-                      body: JSON.stringify({}),
-                    });
-                    if (!res.ok) {
-                      const text = await res.text();
-                      if (text?.startsWith("<!DOCTYPE")) {
-                        throw new Error("Guest endpoint returned HTML");
-                      }
-                      throw new Error("Guest access failed");
-                    }
-                  }
-                  const data = await res.json();
-                  if (data?.token) {
-                    localStorage.setItem("auth_token", data.token);
-                    toast({
-                      title: "Guest Uplink Active",
-                      description: "Welcome to Sector Orbit",
-                    });
-                    setTimeout(() => setLocation("/"), 300);
-                  }
+                  setTimeout(() => setLocation("/"), 300);
                 } catch (err) {
                   toast({
                     title: "Uplink Error",

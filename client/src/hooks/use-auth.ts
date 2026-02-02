@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 
 export interface AuthUser {
   id: string;
@@ -7,24 +8,14 @@ export interface AuthUser {
 }
 
 async function fetchUser(): Promise<AuthUser | null> {
-  const token = localStorage.getItem("auth_token");
-  const response = await fetch("/api/auth/me", {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (response.status === 401) {
-    localStorage.removeItem("auth_token");
-    return null;
+  const { data, error } = await supabase.auth.getUser();
+  if (data?.user) {
+    const u = data.user;
+    const username = (u.user_metadata?.username as string) || (u.email?.split("@")[0] ?? "user");
+    return { id: u.id, username, email: u.email ?? undefined };
   }
-
-  if (!response.ok) {
-    throw new Error(`${response.status}: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.user;
+  const guest = localStorage.getItem("guest_user");
+  return guest ? JSON.parse(guest) : null;
 }
 
 async function logout(): Promise<void> {
