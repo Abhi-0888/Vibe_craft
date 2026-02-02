@@ -19,10 +19,11 @@ async function fetchUser(): Promise<AuthUser | null> {
 }
 
 async function logout(): Promise<void> {
-  await fetch("/api/auth/logout", {
-    method: "POST",
-  });
+  try {
+    await supabase.auth.signOut();
+  } catch {}
   localStorage.removeItem("auth_token");
+  localStorage.removeItem("guest_user");
 }
 
 export function useAuth() {
