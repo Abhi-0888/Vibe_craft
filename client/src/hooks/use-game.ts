@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import {
   type User,
   type Chain,
@@ -103,10 +104,9 @@ export function useChains() {
 
 // === USER & ECONOMY ===
 export function useMe() {
-  return useQuery<User | null>({
-    queryKey: [api.user.me.path],
-    queryFn: getQueryFn({ on401: "returnNull" }),
-  });
+  // Use the auth user instead of API call
+  const { user } = useAuth();
+  return { data: user };
 }
 
 // === MINING SYSTEM ===

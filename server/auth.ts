@@ -128,6 +128,16 @@ export function registerAuthRoutes(app: any) {
         const token = generateToken(user);
         res.json({ user, token });
     });
+    // Handle any method for /api/auth/guest to fix 405 errors
+    app.all('/api/auth/guest', async (req: Request, res: Response) => {
+        const guestId = `guest_${crypto.randomBytes(4).toString('hex')}`;
+        const user: AuthUser = {
+            id: guestId,
+            username: `Guest_${guestId.slice(-4).toUpperCase()}`,
+        };
+        const token = generateToken(user);
+        res.json({ user, token });
+    });
     app.post('/api/auth/login', async (req: Request, res: Response) => {
         const parsed = loginSchema.safeParse(req.body);
         if (!parsed.success) return res.status(400).json({ message: 'Invalid input' });
