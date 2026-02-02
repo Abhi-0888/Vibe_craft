@@ -1,8 +1,11 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist/public",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "client/dist",
   "framework": null,
   "rewrites": [
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/favicon.png", "destination": "/favicon.png" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
