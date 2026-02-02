@@ -16,12 +16,85 @@ import {
   type TeamMember,
   type LeaderboardEntry,
   type CreateStakeRequest,
-  type CreatePredictionRequest
+  type CardGameState,
+  type CardGamePlayer
 } from "@shared/schema";
+
+// === CARD GAME SYSTEM ===
+export function useCardGameState() {
+  return useQuery<CardGameState>({
+    queryKey: [api.cardGame.state.path],
+    queryFn: getQueryFn({ on401: "throw" }),
+    refetchInterval: 2000,
+  });
+}
+
+export function useCardGamePlayers() {
+  return useQuery<CardGamePlayer[]>({
+    queryKey: [api.cardGame.players.path],
+    queryFn: getQueryFn({ on401: "throw" }),
+    refetchInterval: 5000,
+  });
+}
+
+export function useJoinCardGame() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { team: number; walletAddress: string; signature: string; stake?: number }) => {
+      const res = await apiRequest('POST', api.cardGame.join.path, data);
+      return res.json() as Promise<CardGamePlayer>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.cardGame.players.path] });
+    },
+  });
+}
+
+export function useBeginCardGame() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', api.cardGame.begin.path);
+      return res.json() as Promise<CardGameState>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.cardGame.state.path] });
+      queryClient.invalidateQueries({ queryKey: [api.cardGame.players.path] });
+    },
+  });
+}
+
+export function usePlayCard() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { index: number }) => {
+      const res = await apiRequest('POST', api.cardGame.play.path, data);
+      return res.json() as Promise<CardGameState>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.cardGame.state.path] });
+      queryClient.invalidateQueries({ queryKey: [api.cardGame.players.path] });
+    },
+  });
+}
+
+export function useResetCardGame() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', api.cardGame.reset.path);
+      return res.json() as Promise<CardGameState>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.cardGame.state.path] });
+      queryClient.invalidateQueries({ queryKey: [api.cardGame.players.path] });
+    },
+  });
+}
 
 // === CHAINS ===
 export function useChains() {
-  return useQuery({
+  return useQuery<Chain[]>({
     queryKey: [api.chains.list.path],
     queryFn: getQueryFn({ on401: "throw" }),
     refetchInterval: 5000,
@@ -30,7 +103,7 @@ export function useChains() {
 
 // === USER & ECONOMY ===
 export function useMe() {
-  return useQuery({
+  return useQuery<User | null>({
     queryKey: [api.user.me.path],
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
@@ -94,7 +167,7 @@ export function useNftCollections() {
 }
 
 export function useMyNfts() {
-  return useQuery({
+  return useQuery<UserNft[]>({
     queryKey: [api.nfts.user.list.path],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -124,7 +197,7 @@ export function useQuests() {
 }
 
 export function useMyQuestProgress() {
-  return useQuery({
+  return useQuery<UserQuestProgress[]>({
     queryKey: [api.quests.user.progress.path],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -182,7 +255,7 @@ export function useCreateTeam() {
 }
 
 export function useMyStakes() {
-  return useQuery({
+  return useQuery<Stake[]>({
     queryKey: [api.stakes.listMine.path],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -195,31 +268,11 @@ export function useCreateStake() {
   return useMutation({
     mutationFn: async (data: CreateStakeRequest) => {
       const res = await apiRequest('POST', api.stakes.create.path, data);
-      return res.json();
+      return res.json() as Promise<Stake>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.user.me.path] });
-    },
-  });
-}
-
-export function usePredictions() {
-  return useQuery({
-    queryKey: [api.predictions.list.path],
-    queryFn: getQueryFn({ on401: "throw" }),
-  });
-}
-
-export function useCreatePrediction() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: CreatePredictionRequest) => {
-      const res = await apiRequest('POST', api.predictions.create.path, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.predictions.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.user.me.path] });
+      queryClient.invalidateQueries({ queryKey: [api.stakes.listMine.path] });
     },
   });
 }

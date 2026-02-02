@@ -25,7 +25,9 @@ import {
   team_members,
   leaderboard_entries,
   marketplace_listings,
-  marketplace_transactions
+  marketplace_transactions,
+  card_game_state,
+  card_game_players
 } from './schema';
 
 // Error schemas
@@ -280,24 +282,65 @@ export const api = {
     },
   },
 
-  // === PREDICTION SYSTEM ===
-  predictions: {
-    create: {
-      method: 'POST' as const,
-      path: '/api/game/predict',
-      input: insertPredictionSchema,
+  // === CARD GAME SYSTEM ===
+  cardGame: {
+    state: {
+      method: 'GET' as const,
+      path: '/api/game/card/state',
       responses: {
-        201: z.custom<typeof predictions.$inferSelect>(),
+        200: z.custom<typeof card_game_state.$inferSelect>(),
+      },
+    },
+    join: {
+      method: 'POST' as const,
+      path: '/api/game/card/join',
+      input: z.object({
+        team: z.number().int().min(1).max(2),
+        walletAddress: z.string(),
+        signature: z.string(),
+        stake: z.number().positive().optional(),
+      }),
+      responses: {
+        201: z.custom<typeof card_game_players.$inferSelect>(),
         400: errorSchemas.validation,
       },
     },
-    list: {
+    players: {
       method: 'GET' as const,
-      path: '/api/game/predictions',
+      path: '/api/game/card/players',
       responses: {
-        200: z.array(z.custom<typeof predictions.$inferSelect>()),
+        200: z.array(z.custom<typeof card_game_players.$inferSelect>()),
       },
-    }
+    },
+    begin: {
+      method: 'POST' as const,
+      path: '/api/game/card/begin',
+      input: z.object({}),
+      responses: {
+        200: z.custom<typeof card_game_state.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    play: {
+      method: 'POST' as const,
+      path: '/api/game/card/play',
+      input: z.object({
+        index: z.number().int().min(0),
+      }),
+      responses: {
+        200: z.custom<typeof card_game_state.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    reset: {
+      method: 'POST' as const,
+      path: '/api/game/card/reset',
+      input: z.object({}),
+      responses: {
+        200: z.custom<typeof card_game_state.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
   }
 };
 

@@ -1,0 +1,429 @@
+import React from 'react';
+import { 
+  useCardGameState, 
+  useCardGamePlayers, 
+  useJoinCardGame, 
+  useMe,
+  useBeginCardGame,
+  usePlayCard,
+  useResetCardGame
+} from "@/hooks/use-game";
+import { usePelagus } from "@/hooks/use-pelagus";
+import { BrowserProvider } from "quais";
+import { Sword, Users, Zap, RefreshCw, ShieldAlert, Coins, Play, RotateCcw } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+import { CardGamePlayer } from "@shared/schema";
+
+const TEAM_RED = 1;
+const TEAM_BLUE = 2;
+
+// Card values mapping (from server/storage.ts)
+const CARD_VALUES: Record<number, number> = { 0: 5, 1: 8, 2: 3, 3: 12, 4: 6 };
+
+const Card = ({ id, index, onClick, disabled }: { id: number, index: number, onClick?: (index: number) => void, disabled?: boolean }) => (
+  <div
+    onClick={() => !disabled && onClick && onClick(index)}
+    className={`relative w-32 h-48 rounded-xl border-4 transition-all duration-300 transform 
+      ${disabled ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:scale-105 cursor-pointer bg-slate-800 border-slate-600 hover:border-yellow-400 shadow-xl hover:shadow-yellow-500/20'}
+      flex flex-col items-center justify-between p-3 overflow-hidden group shrink-0 select-none`}
+  >
+    <div className="absolute top-0 right-0 p-2 text-[10px] font-mono text-slate-500">#{id}</div>
+
+    <div className="mt-2 p-3 bg-slate-900 rounded-full group-hover:bg-slate-700 transition-colors">
+      <Sword size={32} className="text-slate-200 group-hover:text-yellow-400 transition-colors" />
+    </div>
+
+    <div className="w-full mt-2">
+      <div className="text-center text-[10px] text-slate-400 uppercase tracking-widest mb-1">Damage</div>
+      <div className="flex items-center justify-center space-x-2 bg-black/40 py-1 rounded-lg border border-slate-700">
+        <span className="text-2xl font-black text-white">{CARD_VALUES[id] || '?'}</span>
+      </div>
+    </div>
+  </div>
+);
+
+export default function CardGame() {
+  const { data: user } = useMe();
+  const { isConnected, connect, isLoading: isWalletLoading, address, balance } = usePelagus();
+  const { data: gameState } = useCardGameState();
+  const { data: players } = useCardGamePlayers();
+  
+  const { mutate: joinGame, isPending: isJoining } = useJoinCardGame();
+  const { mutate: beginGame, isPending: isStarting } = useBeginCardGame();
+  const { mutate: playCard, isPending: isPlaying } = usePlayCard();
+  const { mutate: resetGame, isPending: isResetting } = useResetCardGame();
+  
+  const { toast } = useToast();
+
+  const myPlayer = players?.find((p: CardGamePlayer) => p.userId === user?.id);
+  const myTeam = myPlayer?.team || 0;
+  
+  // Derived state
+  const count1 = players?.filter((p: CardGamePlayer) => p.team === TEAM_RED).length || 0;
+  const count2 = players?.filter((p: CardGamePlayer) => p.team === TEAM_BLUE).length || 0;
+  
+  const isMyTurn = gameState?.active && gameState?.turn === myTeam;
+
+  const handleJoin = async (team: number) => {
+    if (!isConnected) {
+      connect();
+      return;
+    }
+    if (!user) return;
+    try {
+      // @ts-ignore
+      const provider = new BrowserProvider(window.pelagus);
+      const signer = await provider.getSigner();
+      const stake = 0.1;
+      const bal = parseFloat(balance || "0");
+      if (bal < stake) {
+        toast({
+          title: "INSUFFICIENT BALANCE",
+          description: "Not enough QUAI in wallet to join.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const message = `QuaiClash: Join Game - stake ${stake}`;
+      const signature = await signer.signMessage(message);
+      joinGame({ team, walletAddress: address!, signature, stake }, {
+        onSuccess: () => {
+          toast({
+            title: "JOINED TEAM",
+            description: `You have joined Team ${team === TEAM_RED ? 'Red' : 'Blue'}!`,
+          });
+        },
+        onError: (err) => {
+          toast({
+            title: "ERROR",
+            description: err.message,
+            variant: "destructive",
+          });
+        }
+      });
+    } catch (err: any) {
+      toast({
+        title: "ERROR",
+        description: err.message || "Failed to connect wallet",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleStartGame = () => {
+    if (!isConnected) {
+      connect();
+      return;
+    }
+    beginGame(undefined, {
+      onError: (err) => {
+        toast({
+          title: "ERROR",
+          description: err.message,
+          variant: "destructive",
+        });
+      }
+    });
+  };
+
+  const handlePlayCard = (index: number) => {
+    if (!isConnected) {
+      connect();
+      return;
+    }
+    if (!isMyTurn || isPlaying) return;
+    playCard({ index }, {
+      onError: (err) => {
+        toast({
+          title: "ERROR",
+          description: err.message,
+          variant: "destructive",
+        });
+      }
+    });
+  };
+
+  const handleReset = () => {
+    if (confirm("Are you sure you want to reset the game?")) {
+      resetGame(undefined, {
+        onSuccess: () => {
+          toast({ title: "GAME RESET", description: "The game has been reset." });
+        }
+      });
+    }
+  };
+
+  if (!gameState) return <div className="p-8 text-center text-slate-400">Loading Game State...</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 p-8 font-sans">
+      
+      {/* HEADER */}
+      <div className="max-w-7xl mx-auto mb-12 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center space-x-4">
+          <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20">
+            <Sword size={32} className="text-yellow-500" />
+          </div>
+          <div>
+            <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">
+              Quai<span className="text-yellow-500">Clash</span>
+            </h1>
+            <p className="text-slate-500 font-mono text-sm">Decentralized Card Battle Arena</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {/* Game Controls */}
+          <div className="flex gap-2">
+            {!gameState.active && count1 > 0 && count2 > 0 && (
+              <button 
+                onClick={handleStartGame}
+                disabled={isStarting}
+                className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+              >
+                <Play size={16} /> START GAME
+              </button>
+            )}
+            
+            <button 
+              onClick={handleReset}
+              disabled={isResetting}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 border border-slate-700"
+            >
+              <RotateCcw size={16} /> RESET
+            </button>
+          </div>
+
+          <div className="flex items-center gap-6 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+            <div className="text-right">
+              <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Prize Pool</div>
+              <div className="text-2xl font-black text-yellow-400 flex items-center justify-end gap-2">
+                <Coins size={20} />
+                {gameState.prizePool ? gameState.prizePool.toString() : "0"} QUAI
+              </div>
+            </div>
+            <div className="h-10 w-px bg-slate-800"></div>
+            <div className="text-right">
+              <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Game ID</div>
+              <div className="text-2xl font-black text-white">#{gameState.gameId}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* MAIN BATTLE ARENA */}
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* LEFT TEAM (RED) */}
+        <div className={`lg:col-span-3 space-y-6 transition-all duration-500 ${gameState.turn === 1 ? 'scale-105 z-10' : 'opacity-80'}`}>
+          <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br from-red-900/40 to-slate-900 border-2 ${gameState.turn === 1 ? 'border-red-500 shadow-[0_0_40px_rgba(239,68,68,0.3)]' : 'border-slate-800'} p-6`}>
+            {gameState.turn === 1 && (
+              <div className="absolute top-4 right-4 animate-pulse">
+                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">Attacking</span>
+              </div>
+            )}
+            
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-4 bg-red-500 rounded-2xl shadow-lg shadow-red-500/20">
+                <ShieldAlert size={32} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-white uppercase italic">Team Red</h2>
+                <div className="flex items-center gap-2 text-red-300 font-mono text-sm">
+                  <Users size={14} /> {count1} Players
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm font-bold text-slate-400 mb-2 uppercase tracking-wider">
+                  <span>Nexus Health</span>
+                  <span>{gameState.hp1}/100</span>
+                </div>
+                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-700">
+                  <div 
+                    className="h-full bg-red-500 transition-all duration-500 ease-out relative"
+                    style={{ width: `${Math.max(0, gameState.hp1!)}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-4">
+                <div className="bg-black/30 p-3 rounded-xl border border-slate-700/50">
+                  <div className="text-xs text-slate-500 mb-1">Cards Left</div>
+                  <div className="text-xl font-bold text-white">{gameState.cards1}</div>
+                </div>
+                <div className="bg-black/30 p-3 rounded-xl border border-slate-700/50">
+                  <div className="text-xs text-slate-500 mb-1">Status</div>
+                  <div className="text-xl font-bold text-red-400">
+                    {gameState.hp1! <= 0 ? "DEFEATED" : "ACTIVE"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {!myTeam && (
+              <>
+                <button
+                  onClick={() => isConnected ? handleJoin(TEAM_RED) : connect()}
+                  disabled={isJoining || isWalletLoading}
+                  className="w-full mt-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-900/20 hover:shadow-red-500/40 flex items-center justify-center gap-2"
+                >
+                  {isWalletLoading ? "Checking..." : (isConnected ? "Join Red Team" : "Connect Wallet")}
+                </button>
+                <button
+                  onClick={connect}
+                  disabled={isWalletLoading}
+                  className="w-full mt-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-900/20 hover:shadow-red-500/40 flex items-center justify-center gap-2"
+                >
+                  {isWalletLoading ? "Checking..." : (isConnected ? "Connect Wallet" : "Connect Wallet")}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* CENTER ACTION AREA */}
+        <div className="lg:col-span-6 flex flex-col items-center">
+          
+          {/* VS BADGE */}
+          <div className="mb-8 relative z-10">
+            <div className="bg-slate-900 border-4 border-slate-800 rounded-full w-24 h-24 flex items-center justify-center shadow-2xl">
+              <span className="text-4xl font-black text-slate-700 italic">VS</span>
+            </div>
+          </div>
+
+          {/* GAME STATUS MESSAGE */}
+          <div className="w-full mb-8 text-center">
+             {gameState.winner !== 0 ? (
+               <div className="bg-yellow-500/10 border border-yellow-500/50 p-6 rounded-2xl animate-bounce">
+                 <h3 className="text-3xl font-black text-yellow-400 uppercase italic mb-2">
+                   Team {gameState.winner === TEAM_RED ? 'Red' : 'Blue'} Wins!
+                 </h3>
+                 <p className="text-yellow-200/80 font-mono">Game Over - Rewards Distributed</p>
+               </div>
+             ) : (
+               <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl backdrop-blur-sm transition-all duration-300">
+                 <div className="flex items-center justify-center gap-3 mb-2">
+                   <RefreshCw size={20} className={`text-blue-400 ${gameState.active ? 'animate-spin' : ''}`} />
+                   <h3 className="text-xl font-bold text-white uppercase tracking-widest">
+                     Current Turn: <span className={gameState.turn === 1 ? 'text-red-400' : 'text-blue-400'}>
+                       {gameState.turn === 1 ? 'Red Team' : 'Blue Team'}
+                     </span>
+                   </h3>
+                 </div>
+                 <p className="text-slate-500 text-sm font-mono">
+                   {gameState.active ? (isMyTurn ? "It's your team's turn! Play a card!" : "Waiting for opponent...") : "Waiting for game start..."}
+                 </p>
+               </div>
+             )}
+          </div>
+
+          {/* PLAYER HAND */}
+          {myTeam !== 0 && (
+            <div className={`w-full bg-slate-900/80 border border-slate-800 rounded-3xl p-6 relative overflow-hidden transition-all duration-300 ${isMyTurn ? 'ring-2 ring-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.1)]' : 'opacity-80'}`}>
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent"></div>
+              
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-white uppercase italic flex items-center gap-2">
+                  <Zap className="text-yellow-400" /> Your Battle Deck
+                </h3>
+                <span className="px-3 py-1 bg-slate-800 rounded-lg text-xs font-mono text-slate-400 border border-slate-700">
+                  Team {myTeam === TEAM_RED ? 'Red' : 'Blue'}
+                </span>
+              </div>
+
+              <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide min-h-[220px]">
+                 {myPlayer?.deck && myPlayer.deck.length > 0 ? (
+                   myPlayer.deck.map((cardId: number, idx: number) => (
+                     <Card 
+                        key={`${cardId}-${idx}`} 
+                        id={cardId} 
+                        index={idx}
+                        onClick={handlePlayCard}
+                        disabled={!isMyTurn || isPlaying || !gameState.active}
+                     />
+                   ))
+                 ) : (
+                   <div className="w-full text-center py-10 text-slate-500 font-mono border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center">
+                     <p>No cards available.</p>
+                     {!gameState.active && (
+                       <p className="text-xs mt-2 text-slate-600">Wait for the game to start to receive cards.</p>
+                     )}
+                   </div>
+                 )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT TEAM (BLUE) */}
+        <div className={`lg:col-span-3 space-y-6 transition-all duration-500 ${gameState.turn === 2 ? 'scale-105 z-10' : 'opacity-80'}`}>
+          <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900/40 to-slate-900 border-2 ${gameState.turn === 2 ? 'border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.3)]' : 'border-slate-800'} p-6`}>
+            {gameState.turn === 2 && (
+              <div className="absolute top-4 right-4 animate-pulse">
+                <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">Attacking</span>
+              </div>
+            )}
+            
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-4 bg-blue-500 rounded-2xl shadow-lg shadow-blue-500/20">
+                <ShieldAlert size={32} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-white uppercase italic">Team Blue</h2>
+                <div className="flex items-center gap-2 text-blue-300 font-mono text-sm">
+                  <Users size={14} /> {count2} Players
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm font-bold text-slate-400 mb-2 uppercase tracking-wider">
+                  <span>Nexus Health</span>
+                  <span>{gameState.hp2}/100</span>
+                </div>
+                <div className="h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-700">
+                  <div 
+                    className="h-full bg-blue-500 transition-all duration-500 ease-out relative"
+                    style={{ width: `${Math.max(0, gameState.hp2!)}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-4">
+                <div className="bg-black/30 p-3 rounded-xl border border-slate-700/50">
+                  <div className="text-xs text-slate-500 mb-1">Cards Left</div>
+                  <div className="text-xl font-bold text-white">{gameState.cards2}</div>
+                </div>
+                <div className="bg-black/30 p-3 rounded-xl border border-slate-700/50">
+                  <div className="text-xs text-slate-500 mb-1">Status</div>
+                  <div className="text-xl font-bold text-blue-400">
+                    {gameState.hp2! <= 0 ? "DEFEATED" : "ACTIVE"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {!myTeam && (
+              <button
+                onClick={() => isConnected ? handleJoin(TEAM_BLUE) : connect()}
+                disabled={isJoining || isWalletLoading}
+                className="w-full mt-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-500/40 flex items-center justify-center gap-2"
+              >
+                {isWalletLoading ? "Checking..." : (isConnected ? "Join Blue Team" : "Connect Wallet")}
+              </button>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}

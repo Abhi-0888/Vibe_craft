@@ -3,7 +3,7 @@ import Dashboard from "@/pages/Dashboard";
 import ChainMap from "@/pages/ChainMap";
 import GuardianGame from "@/pages/GuardianGame";
 import MinerTycoon from "@/pages/MinerTycoon";
-import PredictionArena from "@/pages/PredictionArena";
+import CardGame from "@/pages/CardGame";
 import NftGallery from "@/pages/NftGallery";
 import QuestBoard from "@/pages/QuestBoard";
 import TeamHub from "@/pages/TeamHub";
@@ -27,7 +27,7 @@ export default function Home() {
           <Route path="/map" component={ChainMap} />
           <Route path="/guardian" component={GuardianGame} />
           <Route path="/miner" component={MinerTycoon} />
-          <Route path="/prediction" component={PredictionArena} />
+          <Route path="/card-game" component={CardGame} />
           <Route path="/nfts" component={NftGallery} />
           <Route path="/quests" component={QuestBoard} />
           <Route path="/teams" component={TeamHub} />

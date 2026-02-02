@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useMe } from "@/hooks/use-game";
+import { usePelagus } from "@/hooks/use-pelagus";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -12,11 +13,19 @@ import {
   Cpu,
   Coins
 } from "lucide-react";
+import { useEffect } from "react";
 
 export function Sidebar() {
   const [location] = useLocation();
   const { logout } = useAuth();
   const { data: user } = useMe();
+  const { balance: walletBalance, refreshBalance } = usePelagus();
+
+  useEffect(() => {
+    // Refresh balance periodically
+    const interval = setInterval(refreshBalance, 10000);
+    return () => clearInterval(interval);
+  }, [refreshBalance]);
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -25,7 +34,7 @@ export function Sidebar() {
     { href: "/nfts", label: "NFT Gallery", icon: Cpu },
     { href: "/quests", label: "Quests", icon: ShieldCheck },
     { href: "/guardian", label: "Guardian", icon: ShieldCheck },
-    { href: "/prediction", label: "Predictions", icon: TrendingUp },
+    { href: "/card-game", label: "Card Game", icon: TrendingUp },
     { href: "/teams", label: "Teams", icon: MapIcon },
   ];
 
@@ -44,12 +53,19 @@ export function Sidebar() {
         <div className="rounded-sm border border-primary/20 bg-primary/5 p-4 clip-corner-br">
           <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground uppercase">
             <span>Operator</span>
-            <span className="font-mono text-primary">{user?.username}</span>
+            <span className="font-mono text-primary" title={user?.username}>
+              {user?.username?.startsWith("0x")
+                ? `${user.username.slice(0, 6)}...${user.username.slice(-4)}`
+                : user?.username}
+            </span>
           </div>
           <div className="flex items-center gap-2 mb-1">
             <Coins className="h-4 w-4 text-yellow-500" />
             <span className="font-mono text-lg font-bold text-foreground">
-              {user?.tokens?.toFixed(2) ?? "---"}
+              {walletBalance
+                ? `${parseFloat(walletBalance).toFixed(4)} QUAI`
+                : (user?.tokens?.toFixed(2) ?? "---")
+              }
             </span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -7,6 +7,7 @@ import { setupAuth, registerAuthRoutes, authMiddleware, type AuthRequest } from 
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { mining_sessions } from "@shared/schema";
+import { verifyMessage } from "ethers";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -23,9 +24,7 @@ export async function registerRoutes(
     const p = req.path;
     // Exclude public API routes
     if (
-      p === "/api/auth/login" ||
-      p === "/api/auth/register" ||
-      p === "/api/auth/guest" ||
+      (p.startsWith("/api/auth/") && p !== "/api/auth/me" && p !== "/api/auth/refresh") ||
       p === "/api/health"
     ) {
       return next();
@@ -168,27 +167,78 @@ export async function registerRoutes(
     res.json(stakes);
   });
 
-  // Predictions
-  app.post(api.predictions.create.path, async (req: AuthRequest, res) => {
-    if (!req.user) return res.status(401).send();
+  // Card Game
+  app.get(api.cardGame.state.path, async (req, res) => {
+    const state = await storage.getCardGameState();
+    res.json(state);
+  });
+
+  app.post(api.cardGame.join.path, async (req: AuthRequest, res) => {
+    if (!req.user) return res.sendStatus(401);
     const user = await getOrCreateGameUser(req);
-    if (!user) return res.status(401).send();
+    if (!user) return res.sendStatus(401);
 
     try {
-      const input = api.predictions.create.input.parse({
-        ...req.body,
-        userId: user.id
-      });
-      const pred = await storage.createPrediction(input);
-      res.status(201).json(pred);
+      const input = api.cardGame.join.input.parse(req.body);
+      const stake = Number(input.stake ?? 0.1);
+
+      const joinMsg = `QuaiClash: Join Game - stake ${stake}`;
+      const recovered = verifyMessage(joinMsg, input.signature);
+      if (recovered.toLowerCase() !== input.walletAddress.toLowerCase()) {
+        return res.status(400).json({ message: "Signature verification failed" });
+      }
+
+      // Check if user already joined
+      const existingPlayer = await storage.getCardGamePlayer(user.id);
+      if (existingPlayer) {
+        return res.status(400).json({ message: "Already joined the game" });
+      }
+
+      const player = await storage.createCardGamePlayer(user.id, input.team, stake);
+
+      res.status(201).json(player);
     } catch (e) {
       res.status(400).json({ message: "Invalid input" });
     }
   });
 
-  app.get(api.predictions.list.path, async (req, res) => {
-    const preds = await storage.getPredictions();
-    res.json(preds);
+  app.get(api.cardGame.players.path, async (req, res) => {
+    const state = await storage.getCardGameState();
+    const players = await storage.getCardGamePlayers(state.gameId!);
+    res.json(players);
+  });
+
+  app.post(api.cardGame.begin.path, async (req: AuthRequest, res) => {
+    if (!req.user) return res.sendStatus(401);
+    try {
+      const state = await storage.beginCardGame();
+      res.json(state);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
+  });
+
+  app.post(api.cardGame.play.path, async (req: AuthRequest, res) => {
+    if (!req.user) return res.sendStatus(401);
+    const user = await getOrCreateGameUser(req);
+    if (!user) return res.sendStatus(401);
+    try {
+      const { index } = api.cardGame.play.input.parse(req.body);
+      const state = await storage.playCard(user.id, index);
+      res.json(state);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
+  });
+
+  app.post(api.cardGame.reset.path, async (req: AuthRequest, res) => {
+    if (!req.user) return res.sendStatus(401);
+    try {
+      const state = await storage.resetCardGame();
+      res.json(state);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
   });
 
   // === MINING SYSTEM ===
@@ -378,6 +428,11 @@ export async function registerRoutes(
     const { teamId } = api.teams.join.input.parse(req.body);
     const member = await storage.joinTeam(user.id, teamId);
     res.json(member);
+  });
+
+  // Ensure API unknown routes return JSON, not HTML (avoid SPA fallback)
+  app.use("/api", (req, res) => {
+    res.status(404).json({ message: "Not Found" });
   });
 
   return httpServer;

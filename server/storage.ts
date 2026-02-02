@@ -20,6 +20,8 @@ import {
   leaderboard_entries,
   marketplace_listings,
   marketplace_transactions,
+  card_game_state,
+  card_game_players,
   type User,
   type Chain,
   type Stake,
@@ -37,6 +39,8 @@ import {
   type LeaderboardEntry,
   type MarketplaceListing,
   type MarketplaceTransaction,
+  type CardGameState,
+  type CardGamePlayer,
   type CreateStakeRequest,
   type CreatePredictionRequest,
   type CreateMiningSessionRequest,
@@ -136,6 +140,15 @@ export interface IStorage {
   createMarketplaceListing(sellerId: number, userNftId: number, price: number): Promise<MarketplaceListing>;
   buyNft(listingId: number, buyerId: number): Promise<MarketplaceTransaction>;
   cancelListing(listingId: number): Promise<MarketplaceListing>;
+
+  // Card Game
+  getCardGameState(): Promise<CardGameState>;
+  createCardGamePlayer(userId: number, team: number, stake?: number): Promise<CardGamePlayer>;
+  getCardGamePlayer(userId: number): Promise<CardGamePlayer | undefined>;
+  getCardGamePlayers(gameId: number): Promise<CardGamePlayer[]>;
+  beginCardGame(): Promise<CardGameState>;
+  playCard(userId: number, cardIndex: number): Promise<CardGameState>;
+  resetCardGame(): Promise<CardGameState>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -726,6 +739,232 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return listing;
   }
+
+  // Card Game
+  async getCardGameState(): Promise<CardGameState> {
+    const db = await getDb();
+    const [state] = await db.select().from(card_game_state).orderBy(desc(card_game_state.id)).limit(1);
+    if (!state) {
+      const [newState] = await db.insert(card_game_state).values({}).returning();
+      return newState;
+    }
+    return state;
+  }
+
+  async createCardGamePlayer(userId: number, team: number, stake: number = 50): Promise<CardGamePlayer> {
+    const db = await getDb();
+    const currentState = await this.getCardGameState();
+
+    // Check if already joined
+    const [existing] = await db.select().from(card_game_players)
+      .where(and(
+        eq(card_game_players.userId, userId),
+        eq(card_game_players.gameId, currentState.gameId!)
+      ));
+
+    if (existing) return existing;
+
+    const [newPlayer] = await db.insert(card_game_players).values({
+      gameId: currentState.gameId!,
+      userId,
+      team,
+      deck: [],
+      hasJoined: true
+    }).returning();
+
+    // Add to prize pool (stake provided via route; default handled there)
+    await db.update(card_game_state)
+      .set({
+        prizePool: sql`${card_game_state.prizePool} + ${stake}`,
+        lastActionAt: new Date()
+      })
+      .where(eq(card_game_state.id, currentState.id));
+
+    return newPlayer;
+  }
+
+  async getCardGamePlayer(userId: number): Promise<CardGamePlayer | undefined> {
+    const db = await getDb();
+    const currentState = await this.getCardGameState();
+    const [player] = await db.select().from(card_game_players)
+      .where(and(
+        eq(card_game_players.userId, userId),
+        eq(card_game_players.gameId, currentState.gameId!)
+      ));
+    return player;
+  }
+
+  async getCardGamePlayers(gameId: number): Promise<CardGamePlayer[]> {
+    const db = await getDb();
+    return await db.select().from(card_game_players)
+      .where(eq(card_game_players.gameId, gameId));
+  }
+
+  async beginCardGame(): Promise<CardGameState> {
+    const db = await getDb();
+    const currentState = await this.getCardGameState();
+    if (currentState.active) throw new Error("Game already active");
+
+    const players = await this.getCardGamePlayers(currentState.gameId!);
+    const team1 = players.filter(p => p.team === 1);
+    const team2 = players.filter(p => p.team === 2);
+
+    if (team1.length === 0 || team2.length === 0) {
+      throw new Error("Need players on both teams");
+    }
+
+    // Distribute cards logic using LCM to ensure fairness (same total cards per team)
+    const gcd = (a: number, b: number): number => !b ? a : gcd(b, a % b);
+    const lcm = (a: number, b: number): number => (a * b) / gcd(a, b);
+
+    const size1 = team1.length;
+    const size2 = team2.length;
+    const common = lcm(size1, size2);
+    const totalTeamCards = common * 5;
+
+    const cardsPerPlayer1 = totalTeamCards / size1;
+    const cardsPerPlayer2 = totalTeamCards / size2;
+
+    const GAME_CARDS_IDS = [0, 1, 2, 3, 4];
+
+    // Distribute to Team 1
+    for (const player of team1) {
+      const deck = [];
+      for (let i = 0; i < cardsPerPlayer1; i++) {
+        deck.push(GAME_CARDS_IDS[Math.floor(Math.random() * GAME_CARDS_IDS.length)]);
+      }
+      await db.update(card_game_players)
+        .set({ deck })
+        .where(eq(card_game_players.id, player.id));
+    }
+
+    // Distribute to Team 2
+    for (const player of team2) {
+      const deck = [];
+      for (let i = 0; i < cardsPerPlayer2; i++) {
+        deck.push(GAME_CARDS_IDS[Math.floor(Math.random() * GAME_CARDS_IDS.length)]);
+      }
+      await db.update(card_game_players)
+        .set({ deck })
+        .where(eq(card_game_players.id, player.id));
+    }
+
+    const [updated] = await db.update(card_game_state)
+      .set({
+        active: true,
+        turn: 1,
+        hp1: 100,
+        hp2: 100,
+        cards1: totalTeamCards,
+        cards2: totalTeamCards,
+        lastActionAt: new Date()
+      })
+      .where(eq(card_game_state.id, currentState.id))
+      .returning();
+
+    return updated;
+  }
+
+  async playCard(userId: number, cardIndex: number): Promise<CardGameState> {
+    const db = await getDb();
+    const currentState = await this.getCardGameState();
+    if (!currentState.active) throw new Error("Game not active");
+
+    const player = await this.getCardGamePlayer(userId);
+    if (!player || !player.hasJoined) throw new Error("Not joined");
+    if (player.team !== currentState.turn) throw new Error("Not your turn");
+
+    const deck = player.deck || [];
+    if (cardIndex >= deck.length) throw new Error("Invalid card");
+
+    const cardId = deck[cardIndex];
+    // Card values: 0:5, 1:8, 2:3, 3:12, 4:6
+    const CARD_VALUES: Record<number, number> = { 0: 5, 1: 8, 2: 3, 3: 12, 4: 6 };
+    const damage = CARD_VALUES[cardId] || 0;
+
+    const opponentTeam = player.team === 1 ? 2 : 1;
+    let newHp1 = currentState.hp1!;
+    let newHp2 = currentState.hp2!;
+    let winner = 0;
+    let active = true;
+
+    if (opponentTeam === 1) {
+      newHp1 = Math.max(0, newHp1 - damage);
+      if (newHp1 === 0) {
+        winner = 2;
+        active = false;
+      }
+    } else {
+      newHp2 = Math.max(0, newHp2 - damage);
+      if (newHp2 === 0) {
+        winner = 1;
+        active = false;
+      }
+    }
+
+    // Remove card from deck
+    deck.splice(cardIndex, 1);
+    await db.update(card_game_players)
+      .set({ deck })
+      .where(eq(card_game_players.id, player.id));
+
+    // Update state
+    const updates: any = {
+      hp1: newHp1,
+      hp2: newHp2,
+      winner,
+      active,
+      turn: active ? opponentTeam : currentState.turn,
+      lastActionAt: new Date()
+    };
+
+    if (player.team === 1) updates.cards1 = sql`${card_game_state.cards1} - 1`;
+    else updates.cards2 = sql`${card_game_state.cards2} - 1`;
+
+    const [updatedState] = await db.update(card_game_state)
+      .set(updates)
+      .where(eq(card_game_state.id, currentState.id))
+      .returning();
+
+    // If winner, distribute prizes
+    if (winner > 0) {
+      const winners = await db.select().from(card_game_players)
+        .where(and(
+          eq(card_game_players.gameId, currentState.gameId!),
+          eq(card_game_players.team, winner)
+        ));
+      if (winners.length > 0) {
+        const share = (currentState.prizePool || 0) / winners.length;
+        for (const w of winners) {
+          await db.update(users)
+            .set({ tokens: sql`${users.tokens} + ${share}` })
+            .where(eq(users.id, w.userId));
+        }
+      }
+    }
+
+    return updatedState;
+  }
+
+  async resetCardGame(): Promise<CardGameState> {
+    const db = await getDb();
+    const currentState = await this.getCardGameState();
+    const newGameId = (currentState.gameId || 0) + 1;
+
+    const [newState] = await db.insert(card_game_state).values({
+      gameId: newGameId,
+      active: false,
+      turn: 1,
+      winner: 0,
+      hp1: 100,
+      hp2: 100,
+      prizePool: 0,
+      cards1: 0,
+      cards2: 0
+    }).returning();
+
+    return newState;
+  }
 }
 
 // Memory storage implementation would go here (similar to before but with all new methods)
@@ -1050,6 +1289,38 @@ export class MemStorage implements IStorage {
   }
 
   async cancelListing(listingId: number): Promise<MarketplaceListing> {
+    throw new Error("Not implemented in MemStorage");
+  }
+
+  // Card Game Stubs
+  async getCardGameState(): Promise<CardGameState> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async updateCardGameState(state: Partial<CardGameState>): Promise<CardGameState> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async getCardGamePlayer(userId: number): Promise<CardGamePlayer | undefined> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async createCardGamePlayer(userId: number, team: number): Promise<CardGamePlayer> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async updateCardGamePlayer(userId: number, updates: Partial<CardGamePlayer>): Promise<CardGamePlayer> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async getAllCardGamePlayers(): Promise<CardGamePlayer[]> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async resetCardGame(): Promise<CardGameState> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async getCardGamePlayers(gameId: number): Promise<CardGamePlayer[]> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async beginCardGame(): Promise<CardGameState> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async playCard(userId: number, cardIndex: number): Promise<CardGameState> {
     throw new Error("Not implemented in MemStorage");
   }
 }

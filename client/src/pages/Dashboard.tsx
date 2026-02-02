@@ -1,4 +1,6 @@
 import { useChains, useMe, useMyStakes, useMyQuestProgress, useMyNfts } from "@/hooks/use-game";
+import { usePelagus } from "@/hooks/use-pelagus";
+import { useEffect } from "react";
 import { CyberCard } from "@/components/CyberCard";
 import { Activity, Shield, Pickaxe, TrendingUp, Cpu, Award, Users } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -15,13 +17,20 @@ const MOCK_DATA = [
 
 export default function Dashboard() {
   const { data: user } = useMe();
+  const { balance: walletBalance, refreshBalance, isConnected, connect, isLoading: isWalletLoading } = usePelagus();
+
+  useEffect(() => {
+    const interval = setInterval(refreshBalance, 10000);
+    return () => clearInterval(interval);
+  }, [refreshBalance]);
+
   const { data: chains } = useChains();
   const { data: stakes } = useMyStakes();
   const { data: questProgress } = useMyQuestProgress();
   const { data: nfts } = useMyNfts();
 
-  const totalTps = chains?.reduce((acc, c) => acc + (c.tps || 0), 0) || 0;
-  const activeQuests = questProgress?.filter(p => !p.completed).length || 0;
+  const totalTps = chains?.reduce((acc: number, c) => acc + (c.tps || 0), 0) ?? 0;
+  const activeQuests = questProgress?.filter((p) => !p.completed).length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -63,14 +72,26 @@ export default function Dashboard() {
           <div className="absolute bottom-0 left-0 h-1 bg-primary w-full opacity-20" />
         </CyberCard>
 
-        <CyberCard className="flex flex-col justify-between h-32">
+        <CyberCard className="flex flex-col justify-between h-32 relative">
           <div className="flex justify-between items-start">
             <span className="text-muted-foreground text-xs uppercase font-mono">Qi Balance</span>
             <span className="text-yellow-500 font-bold">Qi</span>
           </div>
           <div className="text-3xl font-display font-bold text-yellow-500">
-            {user?.tokens?.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            {isConnected && walletBalance
+              ? parseFloat(walletBalance).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 })
+              : "0"
+            }
           </div>
+          {!isConnected && (
+            <button 
+              onClick={connect}
+              disabled={isWalletLoading}
+              className="absolute bottom-2 right-2 px-3 py-1 bg-yellow-500/20 hover:bg-yellow-500/40 border border-yellow-500/50 rounded text-xs text-yellow-200 uppercase font-bold tracking-wider transition-all"
+            >
+              {isWalletLoading ? "..." : "Connect"}
+            </button>
+          )}
         </CyberCard>
 
         <CyberCard className="flex flex-col justify-between h-32">

@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, UserPlus, LogIn, Globe, Zap, Database } from "lucide-react";
+import { Shield, UserPlus, LogIn, Globe, Zap, Database, Wallet } from "lucide-react";
+import { BrowserProvider } from "quais";
 
 export default function Login() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -15,6 +16,46 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  async function connectWallet() {
+    try {
+      setLoading(true);
+      // @ts-ignore
+      if (!window.pelagus) throw new Error("Pelagus Wallet not found!");
+
+      // @ts-ignore
+      const provider = new BrowserProvider(window.pelagus);
+      await provider.send("quai_requestAccounts", []);
+      const signer = await provider.getSigner();
+      const address = await signer.getAddress();
+
+      const res = await fetch("/api/auth/wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
+      });
+
+      if (!res.ok) throw new Error("Wallet authentication failed");
+
+      const data = await res.json();
+      if (data?.token) {
+        localStorage.setItem("auth_token", data.token);
+        toast({
+          title: "Wallet Connected",
+          description: `Linked: ${address.slice(0, 6)}...${address.slice(-4)}`,
+        });
+        setTimeout(() => setLocation("/"), 300);
+      }
+    } catch (err: any) {
+      toast({
+        title: "Connection Error",
+        description: err.message || "Failed to connect wallet",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function submit() {
     try {
@@ -185,8 +226,25 @@ export default function Login() {
               onClick={async () => {
                 try {
                   setLoading(true);
-                  const res = await fetch("/api/auth/guest", { method: "POST" });
-                  if (!res.ok) throw new Error("Guest access failed");
+                  let res = await fetch("/api/auth/guest", {
+                    method: "GET",
+                    headers: { Accept: "application/json" },
+                  });
+                  const ct = res.headers.get("content-type") || "";
+                  if (!res.ok || !ct.includes("application/json")) {
+                    res = await fetch("/api/auth/guest", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Accept: "application/json" },
+                      body: JSON.stringify({}),
+                    });
+                    if (!res.ok) {
+                      const text = await res.text();
+                      if (text?.startsWith("<!DOCTYPE")) {
+                        throw new Error("Guest endpoint returned HTML");
+                      }
+                      throw new Error("Guest access failed");
+                    }
+                  }
                   const data = await res.json();
                   if (data?.token) {
                     localStorage.setItem("auth_token", data.token);
@@ -199,7 +257,7 @@ export default function Login() {
                 } catch (err) {
                   toast({
                     title: "Uplink Error",
-                    description: "Terminal failed to establish guest link",
+                    description: `Error: ${err instanceof Error ? err.message : String(err)}`,
                     variant: "destructive",
                   });
                 } finally {

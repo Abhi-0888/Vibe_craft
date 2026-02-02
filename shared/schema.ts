@@ -245,6 +245,29 @@ export const marketplace_transactions = pgTable('marketplace_transactions', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+export const card_game_state = pgTable('card_game_state', {
+  id: serial('id').primaryKey(),
+  gameId: integer('game_id').default(1),
+  active: boolean('active').default(false),
+  turn: integer('turn').default(1), // 1 or 2
+  winner: integer('winner').default(0),
+  hp1: integer('hp1').default(100),
+  hp2: integer('hp2').default(100),
+  prizePool: doublePrecision('prize_pool').default(0),
+  cards1: integer('cards1').default(0),
+  cards2: integer('cards2').default(0),
+  lastActionAt: timestamp('last_action_at').defaultNow(),
+});
+
+export const card_game_players = pgTable('card_game_players', {
+  id: serial('id').primaryKey(),
+  gameId: integer('game_id').notNull(),
+  userId: integer('user_id').notNull(),
+  team: integer('team').notNull(), // 1 or 2
+  deck: jsonb('deck').$type<number[]>(), // Array of card IDs
+  hasJoined: boolean('has_joined').default(true),
+});
+
 // === TYPES ===
 
 export type User = typeof game_users.$inferSelect;
@@ -264,6 +287,8 @@ export type TeamMember = typeof team_members.$inferSelect;
 export type LeaderboardEntry = typeof leaderboard_entries.$inferSelect;
 export type MarketplaceListing = typeof marketplace_listings.$inferSelect;
 export type MarketplaceTransaction = typeof marketplace_transactions.$inferSelect;
+export type CardGameState = typeof card_game_state.$inferSelect;
+export type CardGamePlayer = typeof card_game_players.$inferSelect;
 
 // === INSERT SCHEMAS ===
 
