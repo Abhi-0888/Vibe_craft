@@ -393,11 +393,22 @@ export default function CardGame() {
           {/* GAME STATUS MESSAGE + JOIN BUTTON + PLAYER INFO */}
           <div className="w-full mb-8 text-center">
              {chainState.winner !== 0 ? (
-               <div className="bg-yellow-500/10 border border-yellow-500/50 p-6 rounded-2xl animate-bounce">
-                 <h3 className="text-3xl font-black text-yellow-400 uppercase italic mb-2">
-                   Team {chainState.winner === TEAM_RED ? 'Red' : 'Blue'} Wins!
-                 </h3>
-                 <p className="text-yellow-200/80 font-mono">Game Over - Rewards Distributed</p>
+               <div className="bg-slate-900/50 border border-yellow-500/50 p-6 rounded-2xl backdrop-blur-sm transition-all duration-300 space-y-4">
+                 <div className="bg-yellow-500/10 rounded-2xl py-4 px-6 animate-bounce">
+                   <h3 className="text-3xl font-black text-yellow-400 uppercase italic mb-2">
+                     Team {chainState.winner === TEAM_RED ? 'Red' : 'Blue'} Wins!
+                   </h3>
+                   <p className="text-yellow-200/80 font-mono">Game Over - Rewards Distributed</p>
+                 </div>
+                 <div className="mt-2">
+                   <button
+                     onClick={handlePlayMatch}
+                     disabled={isWalletLoading}
+                     className="px-6 py-3 bg-primary/80 hover:bg-primary text-white font-black rounded-xl transition-all"
+                   >
+                     {isWalletLoading ? "Connecting..." : "JOIN NEXT GAME"}
+                   </button>
+                 </div>
                </div>
              ) : (
                <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl backdrop-blur-sm transition-all duration-300 space-y-4">
@@ -438,17 +449,16 @@ export default function CardGame() {
                      </div>
                    </div>
                  </div>
-                {(!chainState.active || chainState.winner !== 0) && (
-                   <div className="mt-4">
-                     <button 
-                       onClick={handlePlayMatch}
-                       disabled={isWalletLoading}
-                       className="px-6 py-3 bg-primary/80 hover:bg-primary text-white font-black rounded-xl transition-all"
-                     >
-                      {isWalletLoading ? "Connecting..." : "JOIN GAME"}
-                     </button>
-                   </div>
-                 )}
+
+                 <div className="mt-4">
+                   <button 
+                     onClick={handlePlayMatch}
+                     disabled={isWalletLoading}
+                     className="px-6 py-3 bg-primary/80 hover:bg-primary text-white font-black rounded-xl transition-all"
+                   >
+                     {isWalletLoading ? "Connecting..." : "JOIN GAME"}
+                   </button>
+                 </div>
                </div>
              )}
           </div>
