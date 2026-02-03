@@ -160,6 +160,20 @@ export default function CardGame() {
     (async () => {
       try {
         const contract = await getContract(true);
+
+        // If previous game is finished but not rolled over, reset on-chain
+        try {
+          const currentState = await contract.getGameState();
+          const isActive: boolean = currentState[0];
+          const winner: number = Number(currentState[2]);
+          if (winner !== 0 && !isActive) {
+            const txReset = await contract.resetGame();
+            await txReset.wait();
+          }
+        } catch {
+          // ignore - older contract without getGameState would just skip this
+        }
+
         // Read exact entry fee from the contract so we always send the correct value
         const onChainFee: bigint = await contract.ENTRY_FEE();
 
