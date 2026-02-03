@@ -15,12 +15,14 @@ async function main() {
   }
   const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 
-  const provider = new quais.JsonRpcProvider("https://orchard.rpc.quai.network", undefined, { usePathing: true });
+  const provider = new quais.JsonRpcProvider("https://orchard.rpc.quai.network/cyprus1");
   const wallet = new quais.Wallet(pk, provider);
 
   console.log("Deploying CardGame from:", wallet.address);
   const factory = new quais.ContractFactory(artifact.abi, artifact.bytecode, wallet);
-  const contract = await factory.deploy();
+  factory.setIPFSHash("QmYwAPJzv5CZsnAzt8auVTLsYjN2DGW5ZChx7YsiqX3K3C");
+  // Constructor expects a treasury address; pass deployer address (ignored in contract logic but required by ABI)
+  const contract = await factory.deploy(wallet.address);
   console.log("Transaction:", contract.deploymentTransaction().hash);
   await contract.waitForDeployment();
   const address = await contract.getAddress();
