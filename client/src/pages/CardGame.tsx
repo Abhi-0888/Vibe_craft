@@ -1,12 +1,6 @@
 import React from 'react';
 import { 
-  useCardGameState, 
-  useCardGamePlayers, 
-  useJoinCardGame, 
   useMe,
-  useBeginCardGame,
-  usePlayCard,
-  useResetCardGame
 } from "@/hooks/use-game";
 import { usePelagus } from "@/hooks/use-pelagus";
 import { BrowserProvider, Contract } from "quais";
@@ -63,10 +57,7 @@ export default function CardGame() {
   const [myDeck, setMyDeck] = React.useState<number[]>([]);
   const [myTeamOnChain, setMyTeamOnChain] = React.useState<number>(0);
   const [isLoadingState, setIsLoadingState] = React.useState<boolean>(true);
-  
-  const { mutate: joinGameApi, isPending: isJoining } = useJoinCardGame();
-  const { mutate: playCardApi, isPending: isPlaying } = usePlayCard();
-  const { mutate: resetGameApi, isPending: isResetting } = useResetCardGame();
+  const [isResetting, setIsResetting] = React.useState<boolean>(false);
   
   const { toast } = useToast();
 
@@ -147,40 +138,6 @@ export default function CardGame() {
       clearInterval(id);
     };
   }, [address]);
-
-  const handleJoin = async (team: number) => {
-    if (!isConnected) {
-      connect();
-      return;
-    }
-    if (!user) return;
-    try {
-      const ENTRY = "0.0067";
-      const bal = parseFloat(balance || "0");
-      if (bal < parseFloat(ENTRY)) {
-        toast({
-          title: "INSUFFICIENT BALANCE",
-          description: "Not enough QUAI in wallet to join.",
-          variant: "destructive",
-        });
-        return;
-      }
-      const contract = await getContract(true);
-      const tx = await contract.joinTeam(team, { value: parseEther(ENTRY) });
-      await tx.wait();
-      refreshBalance();
-      toast({
-        title: "JOINED TEAM",
-        description: `You have joined Team ${team === TEAM_RED ? 'Red' : 'Blue'}!`,
-      });
-    } catch (err: any) {
-      toast({
-        title: "ERROR",
-        description: err.message || "Failed to connect wallet",
-        variant: "destructive",
-      });
-    }
-  };
 
   const handlePlayMatch = () => {
     if (!isConnected) {
@@ -266,22 +223,24 @@ export default function CardGame() {
   };
 
   const handleReset = () => {
-    if (confirm("Are you sure you want to reset the game?")) {
-      (async () => {
-        try {
-          const contract = await getContract(true);
-          const tx = await contract.resetGame();
-          await tx.wait();
-          toast({ title: "GAME RESET", description: "The game has been reset on-chain." });
-        } catch (err: any) {
-          toast({
-            title: "ERROR",
-            description: err.message,
-            variant: "destructive",
-          });
-        }
-      })();
-    }
+    if (!confirm("Are you sure you want to reset the game?")) return;
+    (async () => {
+      try {
+        setIsResetting(true);
+        const contract = await getContract(true);
+        const tx = await contract.resetGame();
+        await tx.wait();
+        toast({ title: "GAME RESET", description: "The game has been reset on-chain." });
+      } catch (err: any) {
+        toast({
+          title: "ERROR",
+          description: err.message,
+          variant: "destructive",
+        });
+      } finally {
+        setIsResetting(false);
+      }
+    })();
   };
 
   if (!chainState || isLoadingState) return <div className="p-8 text-center text-slate-400">Loading Game State...</div>;
@@ -400,24 +359,7 @@ export default function CardGame() {
               </div>
             </div>
 
-            {!myTeam && (
-              <>
-                <button
-                  onClick={() => isConnected ? handleJoin(TEAM_RED) : connect()}
-                  disabled={isJoining || isWalletLoading}
-                  className="w-full mt-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-900/20 hover:shadow-red-500/40 flex items-center justify-center gap-2"
-                >
-                  {isWalletLoading ? "Checking..." : (isConnected ? "Join Red Team" : "Connect Wallet")}
-                </button>
-                <button
-                  onClick={connect}
-                  disabled={isWalletLoading}
-                  className="w-full mt-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-900/20 hover:shadow-red-500/40 flex items-center justify-center gap-2"
-                >
-                  {isWalletLoading ? "Checking..." : (isConnected ? "Connect Wallet" : "Connect Wallet")}
-                </button>
-              </>
-            )}
+            {/* Team selection buttons removed in favor of single JOIN GAME flow */}
           </div>
         </div>
 
@@ -457,14 +399,14 @@ export default function CardGame() {
                  <p className="text-slate-500 text-sm font-mono">
                    {chainState.active ? (isMyTurn ? "It's your team's turn! Play a card!" : "Waiting for opponent...") : "Waiting for game start..."}
                  </p>
-                 {!chainState.active && (
+                 {!chainState.active && chainState.winner === 0 && (
                    <div className="mt-4">
                      <button 
                        onClick={handlePlayMatch}
                        disabled={isWalletLoading}
                        className="px-6 py-3 bg-primary/80 hover:bg-primary text-white font-black rounded-xl transition-all"
                      >
-                       {isWalletLoading ? "Connecting..." : "PLAY GAME"}
+                       {isWalletLoading ? "Connecting..." : "JOIN GAME"}
                      </button>
                    </div>
                  )}
@@ -509,10 +451,12 @@ export default function CardGame() {
             </div>
           )}
 
-          {/* CHAT PANEL */}
-          <div className="w-full mt-6">
-            <ChatPanel gameId={chainState.gameId} />
-          </div>
+          {/* CHAT PANEL - only visible during active match */}
+          {chainState.active && chainState.winner === 0 && (
+            <div className="w-full mt-6">
+              <ChatPanel gameId={chainState.gameId} />
+            </div>
+          )}
         </div>
 
         {/* RIGHT TEAM (BLUE) */}
@@ -566,15 +510,7 @@ export default function CardGame() {
               </div>
             </div>
 
-            {!myTeam && (
-              <button
-                onClick={() => isConnected ? handleJoin(TEAM_BLUE) : connect()}
-                disabled={isJoining || isWalletLoading}
-                className="w-full mt-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-500/40 flex items-center justify-center gap-2"
-              >
-                {isWalletLoading ? "Checking..." : (isConnected ? "Join Blue Team" : "Connect Wallet")}
-              </button>
-            )}
+            {/* Team selection buttons removed in favor of single JOIN GAME flow */}
           </div>
         </div>
 

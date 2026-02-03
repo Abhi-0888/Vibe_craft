@@ -10,7 +10,8 @@ const EVENT_ABI = [
   "event GameCompleted(uint256 gameId, address winner, uint256 totalPool, uint256 fee, uint256 payout, bytes32 txHash, uint256 timestamp)"
 ];
 const IFACE = new Interface(EVENT_ABI);
-const TOPIC = id("GameCompleted(uint256,address,uint256,uint256,uint256,uint256)");
+// Correct event topic including the bytes32 txHash and uint256 timestamp
+const TOPIC = id("GameCompleted(uint256,address,uint256,uint256,uint256,bytes32,uint256)");
 
 type HistoryItem = {
   gameId: number;
