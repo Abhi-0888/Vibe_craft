@@ -217,8 +217,11 @@ export default function Login() {
               onClick={async () => {
                 try {
                   setLoading(true);
-                  localStorage.setItem("auth_token", "guest.token");
-                  localStorage.setItem("guest_user", JSON.stringify({ id: "guest", username: "Guest" }));
+                  const res = await fetch('/api/auth/guest');
+                  if (!res.ok) throw new Error('Failed to get guest token');
+                  const data = await res.json();
+                  localStorage.setItem("auth_token", data.token);
+                  localStorage.setItem("guest_user", JSON.stringify(data.user));
                   toast({
                     title: "Guest Uplink Active",
                     description: "Welcome to Sector Orbit",
