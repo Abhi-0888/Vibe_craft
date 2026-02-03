@@ -217,9 +217,14 @@ export default function Login() {
               onClick={async () => {
                 try {
                   setLoading(true);
-                  const res = await fetch('/api/auth/guest');
-                  if (!res.ok) throw new Error('Failed to get guest token');
-                  const data = await res.json();
+                  const res = await fetch('http://localhost:5005/api/auth/guest');
+                  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                  let data;
+                  try {
+                    data = await res.json();
+                  } catch (e) {
+                    throw new Error('Invalid JSON response');
+                  }
                   localStorage.setItem("auth_token", data.token);
                   localStorage.setItem("guest_user", JSON.stringify(data.user));
                   toast({
