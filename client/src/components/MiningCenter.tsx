@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export function MiningCenter() {
     const { data: user } = useMe();
-    const { data: session } = useMiningSession(user?.id);
+    const { data: session } = useMiningSession(Number(user?.id || 0));
     const clickMutation = useMiningClick();
     const { toast } = useToast();
 

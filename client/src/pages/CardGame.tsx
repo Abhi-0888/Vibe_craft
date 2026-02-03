@@ -11,8 +11,9 @@ import {
 import { usePelagus } from "@/hooks/use-pelagus";
 import { BrowserProvider, Contract } from "quais";
 import { parseEther, formatEther } from "ethers";
-import { Sword, Users, Zap, RefreshCw, ShieldAlert, Coins, Play, RotateCcw, Send } from 'lucide-react';
+import { Sword, Users, Zap, RefreshCw, ShieldAlert, Coins, Play, RotateCcw } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { ChatPanel } from "@/components/ChatPanel";
 import { CardGamePlayer } from "@shared/schema";
 
 const TEAM_RED = 1;
@@ -20,16 +21,6 @@ const TEAM_BLUE = 2;
 
 // Card values mapping (from server/storage.ts)
 const CARD_VALUES: Record<number, number> = { 0: 5, 1: 8, 2: 3, 3: 12, 4: 6 };
-
-const CONTRACT_ADDRESS = "0x0D0024F68D4A979621951E4749795840f01a5b25";
-const CONTRACT_ABI = [
-  "function joinGame() payable",
-  "function startGame()",
-  "function getMyDeck() view returns (uint256[])",
-  "function getGameState() view returns (bool, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
-  "function playCard(uint256 index)",
-  "function resetGame()"
-];
 
 const Card = ({ id, index, onClick, disabled }: { id: number, index: number, onClick?: (index: number) => void, disabled?: boolean }) => (
   <div
@@ -71,31 +62,13 @@ export default function CardGame() {
   } | null>(null);
   const [myDeck, setMyDeck] = React.useState<number[]>([]);
   const [myTeamOnChain, setMyTeamOnChain] = React.useState<number>(0);
-  const [contract, setContract] = React.useState<Contract | null>(null);
-  const [ws, setWs] = React.useState<WebSocket | null>(null);
-  const [messages, setMessages] = React.useState<any[]>([]);
-  const [chatInput, setChatInput] = React.useState('');
   const [isLoadingState, setIsLoadingState] = React.useState<boolean>(true);
   
-  const { mutate: joinGame, isPending: isJoining } = useJoinCardGame();
-  const { mutate: beginGame, isPending: isStarting } = useBeginCardGame();
-  const { mutate: playCard, isPending: isPlaying } = usePlayCard();
-  const { mutate: resetGame, isPending: isResetting } = useResetCardGame();
+  const { mutate: joinGameApi, isPending: isJoining } = useJoinCardGame();
+  const { mutate: playCardApi, isPending: isPlaying } = usePlayCard();
+  const { mutate: resetGameApi, isPending: isResetting } = useResetCardGame();
   
   const { toast } = useToast();
-
-  // Setup contract
-  React.useEffect(() => {
-    if (isConnected && address) {
-      const setupContract = async () => {
-        const provider = new BrowserProvider((window as any).pelagus);
-        const signer = await provider.getSigner();
-        const contractInstance = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-        setContract(contractInstance);
-      };
-      setupContract();
-    }
-  }, [isConnected, address]);
 
   const myTeam = myTeamOnChain || 0;
   
@@ -107,8 +80,7 @@ export default function CardGame() {
 
   const CONTRACT_ADDRESS = "0x00024F68D4A979621951E4749795840fD1a5b526";
   const ABI = [
-    { "type":"function", "name":"joinTeam", "inputs":[{"name":"_teamId","type":"uint256"}], "outputs":[], "stateMutability":"payable" },
-    { "type":"function", "name":"beginGame", "inputs":[], "outputs":[], "stateMutability":"nonpayable" },
+    { "type":"function", "name":"joinGame", "inputs":[], "outputs":[], "stateMutability":"payable" },
     { "type":"function", "name":"playCard", "inputs":[{"name":"index","type":"uint256"}], "outputs":[], "stateMutability":"nonpayable" },
     { "type":"function", "name":"resetGame", "inputs":[], "outputs":[], "stateMutability":"nonpayable" },
     { "type":"function", "name":"getMyDeck", "inputs":[], "outputs":[{"type":"uint256[]"}], "stateMutability":"view" },
@@ -155,10 +127,6 @@ export default function CardGame() {
         if (!mounted) return;
         setChainState(s);
 
-        if (s.winner > 0) {
-          setMessages([]); // Clear chat when game ends
-        }
-
         if (address) {
           const contractRW = await getContract(true);
           const deck: number[] = (await contractRW.getMyDeck()).map((n: any) => Number(n));
@@ -180,31 +148,7 @@ export default function CardGame() {
     };
   }, [address]);
 
-  // Setup chat
-  React.useEffect(() => {
-    if (chainState?.gameId && address) {
-      const ws = new WebSocket(`ws://localhost:5005/ws/chat?gameId=${chainState.gameId}&address=${address}`);
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'chat') {
-          setMessages(prev => [...prev, { ...msg, ts: new Date(msg.ts) }]);
-        }
-      };
-      setWs(ws);
-      return () => {
-        ws.close();
-      };
-    }
-  }, [chainState?.gameId, address]);
-
-  const sendMessage = () => {
-    if (ws && chatInput.trim()) {
-      ws.send(JSON.stringify({ text: chatInput }));
-      setChatInput('');
-    }
-  };
-
-  const handleJoin = async () => {
+  const handleJoin = async (team: number) => {
     if (!isConnected) {
       connect();
       return;
@@ -222,29 +166,39 @@ export default function CardGame() {
         return;
       }
       const contract = await getContract(true);
-      const tx = await contract.joinGame({ value: parseEther(ENTRY), gasLimit: 1000000 });
+      const tx = await contract.joinTeam(team, { value: parseEther(ENTRY) });
       await tx.wait();
       refreshBalance();
       toast({
-        title: "JOINED GAME",
-        description: "You have joined the game. Waiting for opponent.",
+        title: "JOINED TEAM",
+        description: `You have joined Team ${team === TEAM_RED ? 'Red' : 'Blue'}!`,
       });
     } catch (err: any) {
       toast({
         title: "ERROR",
-        description: err.message || "Failed to join",
+        description: err.message || "Failed to connect wallet",
         variant: "destructive",
       });
     }
   };
 
-  const handleStartGame = () => {
+  const handlePlayMatch = () => {
     if (!isConnected) {
       connect();
       return;
     }
     (async () => {
       try {
+        const ENTRY = "0.0067";
+        const bal = parseFloat(balance || "0");
+        if (bal < parseFloat(ENTRY)) {
+          toast({
+            title: "INSUFFICIENT BALANCE",
+            description: "Not enough QUAI in wallet to play.",
+            variant: "destructive",
+          });
+          return;
+        }
         const contract = await getContract(true);
         // @ts-ignore
         const provider = new BrowserProvider(window.pelagus);
@@ -257,9 +211,8 @@ export default function CardGame() {
           });
           return;
         }
-        const tx = await contract.startGame({ gasLimit: 1000000 });
+        const tx = await contract.joinGame({ value: parseEther(ENTRY) });
         await tx.wait();
-        // Immediately refresh state and decks so UI doesn't get stuck
         const state = await contract.getGameState();
         setChainState({
           active: state[0],
@@ -280,11 +233,11 @@ export default function CardGame() {
           const playerTuple = await contract.players(Number(state[9]), address);
           setMyTeamOnChain(Number(playerTuple[1] ?? 0));
         }
-        toast({ title: "GAME STARTED", description: "Cards dealt and game is now active." });
+        toast({ title: state[0] ? "MATCH STARTED" : "WAITING FOR OPPONENT", description: state[0] ? "Cards dealt. Game is active." : "You are queued. Another player must join." });
       } catch (err: any) {
         toast({
           title: "ERROR",
-          description: err?.reason || err?.message || "Failed to start game",
+          description: err?.reason || err?.message || "Failed to join match",
           variant: "destructive",
         });
       }
@@ -317,9 +270,8 @@ export default function CardGame() {
       (async () => {
         try {
           const contract = await getContract(true);
-          const tx = await contract.resetGame({ gasLimit: 100000 });
+          const tx = await contract.resetGame();
           await tx.wait();
-          setMessages([]); // Clear chat
           toast({ title: "GAME RESET", description: "The game has been reset on-chain." });
         } catch (err: any) {
           toast({
@@ -354,16 +306,6 @@ export default function CardGame() {
         <div className="flex items-center gap-4">
           {/* Game Controls */}
           <div className="flex gap-2">
-            {!chainState.active && count1 > 0 && count2 > 0 && (
-              <button 
-                onClick={handleStartGame}
-                disabled={isStarting}
-                className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
-              >
-                <Play size={16} /> START GAME
-              </button>
-            )}
-            
             <button 
               onClick={handleReset}
               disabled={isResetting}
@@ -459,13 +401,22 @@ export default function CardGame() {
             </div>
 
             {!myTeam && (
-              <button
-                onClick={() => isConnected ? handleJoin() : connect()}
-                disabled={isJoining || isWalletLoading}
-                className="w-full mt-8 py-4 bg-green-600 hover:bg-green-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-green-900/20 hover:shadow-green-500/40 flex items-center justify-center gap-2"
-              >
-                {isWalletLoading ? "Checking..." : (isConnected ? "Join Game" : "Connect Wallet")}
-              </button>
+              <>
+                <button
+                  onClick={() => isConnected ? handleJoin(TEAM_RED) : connect()}
+                  disabled={isJoining || isWalletLoading}
+                  className="w-full mt-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-900/20 hover:shadow-red-500/40 flex items-center justify-center gap-2"
+                >
+                  {isWalletLoading ? "Checking..." : (isConnected ? "Join Red Team" : "Connect Wallet")}
+                </button>
+                <button
+                  onClick={connect}
+                  disabled={isWalletLoading}
+                  className="w-full mt-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-900/20 hover:shadow-red-500/40 flex items-center justify-center gap-2"
+                >
+                  {isWalletLoading ? "Checking..." : (isConnected ? "Connect Wallet" : "Connect Wallet")}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -480,7 +431,7 @@ export default function CardGame() {
             </div>
           </div>
 
-          {/* GAME STATUS MESSAGE */}
+          {/* GAME STATUS MESSAGE + PLAY BUTTON */}
           <div className="w-full mb-8 text-center">
              {chainState.winner !== 0 ? (
                <div className="bg-yellow-500/10 border border-yellow-500/50 p-6 rounded-2xl animate-bounce">
@@ -494,14 +445,29 @@ export default function CardGame() {
                  <div className="flex items-center justify-center gap-3 mb-2">
                    <RefreshCw size={20} className={`text-blue-400 ${chainState.active ? 'animate-spin' : ''}`} />
                    <h3 className="text-xl font-bold text-white uppercase tracking-widest">
-                     Current Turn: <span className={chainState.turn === 1 ? 'text-red-400' : 'text-blue-400'}>
-                       {chainState.turn === 1 ? 'Red Team' : 'Blue Team'}
-                     </span>
+                     {chainState.active ? (
+                       <>Current Turn: <span className={chainState.turn === 1 ? 'text-red-400' : 'text-blue-400'}>
+                         {chainState.turn === 1 ? 'Red Team' : 'Blue Team'}
+                       </span></>
+                     ) : (
+                       <>Waiting for opponent… {myTeam ? `(You are ${myTeam === TEAM_RED ? 'Red' : 'Blue'})` : ""}</>
+                     )}
                    </h3>
                  </div>
                  <p className="text-slate-500 text-sm font-mono">
                    {chainState.active ? (isMyTurn ? "It's your team's turn! Play a card!" : "Waiting for opponent...") : "Waiting for game start..."}
                  </p>
+                 {!chainState.active && (
+                   <div className="mt-4">
+                     <button 
+                       onClick={handlePlayMatch}
+                       disabled={isWalletLoading}
+                       className="px-6 py-3 bg-primary/80 hover:bg-primary text-white font-black rounded-xl transition-all"
+                     >
+                       {isWalletLoading ? "Connecting..." : "PLAY GAME"}
+                     </button>
+                   </div>
+                 )}
                </div>
              )}
           </div>
@@ -543,6 +509,10 @@ export default function CardGame() {
             </div>
           )}
 
+          {/* CHAT PANEL */}
+          <div className="w-full mt-6">
+            <ChatPanel gameId={chainState.gameId} />
+          </div>
         </div>
 
         {/* RIGHT TEAM (BLUE) */}
@@ -598,44 +568,15 @@ export default function CardGame() {
 
             {!myTeam && (
               <button
-                onClick={() => isConnected ? handleJoin() : connect()}
+                onClick={() => isConnected ? handleJoin(TEAM_BLUE) : connect()}
                 disabled={isJoining || isWalletLoading}
-                className="w-full mt-8 py-4 bg-green-600 hover:bg-green-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-green-900/20 hover:shadow-green-500/40 flex items-center justify-center gap-2"
+                className="w-full mt-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-500/40 flex items-center justify-center gap-2"
               >
-                {isWalletLoading ? "Checking..." : (isConnected ? "Join Game" : "Connect Wallet")}
+                {isWalletLoading ? "Checking..." : (isConnected ? "Join Blue Team" : "Connect Wallet")}
               </button>
             )}
           </div>
         </div>
-
-        {/* Chat Section */}
-        {chainState?.active && chainState?.winner === 0 && (
-          <div className="mt-8 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
-            <div className="text-sm font-bold text-slate-300 mb-4">GAME CHAT</div>
-            <div className="h-64 overflow-y-auto bg-black/30 p-3 rounded-lg border border-slate-700 mb-4">
-              {messages.map((msg, i) => (
-                <div key={i} className="text-xs text-slate-400 mb-2">
-                  <span className="text-yellow-400 font-bold">{msg.address?.slice(0,6)}...{msg.address?.slice(-4)}</span>: {msg.text}
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder="Type message..."
-                className="flex-1 px-3 py-2 bg-black/50 border border-slate-700 rounded-lg text-white text-sm"
-              />
-              <button
-                onClick={sendMessage}
-                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg flex items-center gap-2"
-              >
-                <Send size={14} /> Send
-              </button>
-            </div>
-          </div>
-        )}
 
       </div>
     </div>

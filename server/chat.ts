@@ -39,23 +39,11 @@ export function setupChatServer(httpServer: Server) {
 
       ws.on("message", (message) => {
         let text = "";
-        let type = "chat";
         try {
           const parsed = JSON.parse(message.toString());
           text = parsed?.text ?? message.toString();
-          type = parsed?.type ?? "chat";
         } catch {
           text = message.toString();
-        }
-        if (type === "end-game") {
-          const chan = channels.get(gameId);
-          if (chan) {
-            chan.forEach((client) => {
-              try { client.close(); } catch {}
-            });
-            channels.delete(gameId);
-          }
-          return;
         }
         broadcast(gameId, {
           type: "chat",

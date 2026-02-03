@@ -44,13 +44,16 @@ contract CardGame {
         uint256 totalPool,
         uint256 fee,
         uint256 payout,
+        bytes32 txHash,
         uint256 timestamp
     );
 
     address public PLATFORM_TREASURY;
+    address public constant OWNER_WALLET = 0x0007c93EB56B0e3B81F5632b26499356501BFdE5;
 
     constructor(address _treasury) {
-        PLATFORM_TREASURY = _treasury;
+        // Route all platform fees to the owner wallet, regardless of the constructor arg
+        PLATFORM_TREASURY = OWNER_WALLET;
         cards[0] = Card(5);
         cards[1] = Card(8);
         cards[2] = Card(3);
@@ -60,10 +63,18 @@ contract CardGame {
     }
 
     function joinGame() public payable {
-        require(!gameActive, "Game already started! No late joiners.");
+        // Automatically roll over to a new game if the current one is active,
+        // already has two players, or was previously completed.
+        if (
+            gameActive ||
+            winnerTeam != 0 ||
+            (redPlayer[gameId] != address(0) && bluePlayer[gameId] != address(0))
+        ) {
+            _startNewGame();
+        }
+
         require(msg.value == ENTRY_FEE, "Entry Fee is 0.0067 QUAI");
         require(!players[gameId][msg.sender].hasJoined, "Already joined this game");
-        require(winnerTeam == 0, "Game finished. Reset to play.");
 
         uint team;
         if (redPlayer[gameId] == address(0)) {
@@ -86,6 +97,11 @@ contract CardGame {
         gamePrizePool[gameId] += msg.value;
 
         emit PlayerJoined(gameId, msg.sender, team);
+
+        // Auto-start when both players are present
+        if (redPlayer[gameId] != address(0) && bluePlayer[gameId] != address(0)) {
+            startGame();
+        }
     }
 
     // Start the game - requires exactly 2 players
@@ -97,10 +113,10 @@ contract CardGame {
         _dealCards(redPlayer[gameId], 5);
         _dealCards(bluePlayer[gameId], 5);
 
-        teamHP[gameId * 2 + 1] = MAX_HP; // Red team HP
-        teamHP[gameId * 2 + 2] = MAX_HP; // Blue team HP
-        teamCards[gameId * 2 + 1] = 5;
-        teamCards[gameId * 2 + 2] = 5;
+        teamHP[1] = MAX_HP; // Red team HP
+        teamHP[2] = MAX_HP; // Blue team HP
+        teamCards[1] = 5;
+        teamCards[2] = 5;
         currentTeamTurn = 1; 
         gameActive = true;
         winnerTeam = 0;
@@ -118,24 +134,26 @@ contract CardGame {
     }
 
     function resetGame() public {
-        gameId++; 
-        
-        // Clear players
-        redPlayer[gameId - 1] = address(0);
-        bluePlayer[gameId - 1] = address(0);
-        
-        gameActive = false;
-        teamHP[gameId * 2 - 1] = 0;
-        teamHP[gameId * 2] = 0;
-        teamCards[gameId * 2 - 1] = 0;
-        teamCards[gameId * 2] = 0;
-        winnerTeam = 0;
-        currentTeamTurn = 1;
+        _startNewGame();
     }
 
-    function getMyDeck() public view returns (uint[] memory) {
-        return players[gameId][msg.sender].deck;
+    // Internal helper to cleanly move to the next gameId
+    function _startNewGame() internal {
+        gameId += 1;
+
+        // Reset per-game state for the new game
+        gameActive = false;
+        winnerTeam = 0;
+        currentTeamTurn = 1;
+
+        // Reset team HP and card counts for the upcoming game
+        teamHP[1] = 0;
+        teamHP[2] = 0;
+        teamCards[1] = 0;
+        teamCards[2] = 0;
     }
+
+    function playCard(uint index) public {
         require(gameActive, "Game not active");
         Player storage p = players[gameId][msg.sender];
         require(p.hasJoined, "Not joined");
@@ -187,12 +205,21 @@ contract CardGame {
             uint256 payout = totalPool - fee;
             payable(winnerAddress).transfer(payout);
             emit PayoutSent(winnerAddress, payout);
-            payable(PLATFORM_TREASURY).transfer(fee);
-            emit PayoutSent(PLATFORM_TREASURY, fee);
+            // Send the platform fee to the owner wallet
+            payable(OWNER_WALLET).transfer(fee);
+            emit PayoutSent(OWNER_WALLET, fee);
         }
 
         emit GameEnded(winner, totalPool);
-        emit GameCompleted(gameId, winnerAddress, totalPool, (totalPool * 3) / 100, totalPool - ((totalPool * 3) / 100), block.timestamp);
+        emit GameCompleted(
+            gameId,
+            winnerAddress,
+            totalPool,
+            (totalPool * 3) / 100,
+            totalPool - ((totalPool * 3) / 100),
+            bytes32(0),
+            block.timestamp
+        );
     }
 
     function getMyDeck() public view returns (uint[] memory) {

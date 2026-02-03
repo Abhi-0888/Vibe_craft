@@ -104,9 +104,11 @@ export function useChains() {
 
 // === USER & ECONOMY ===
 export function useMe() {
-  // Use the auth user instead of API call
-  const { user } = useAuth();
-  return { data: user };
+  return useQuery<User>({
+    queryKey: [api.user.me.path],
+    queryFn: getQueryFn({ on401: "throw" }),
+    staleTime: 1000 * 30,
+  });
 }
 
 // === MINING SYSTEM ===

@@ -7,7 +7,7 @@ import { usePelagus } from "@/hooks/use-pelagus";
 
 const CONTRACT_ADDRESS = "0x00024F68D4A979621951E4749795840fD1a5b526";
 const EVENT_ABI = [
-  "event GameCompleted(uint256 gameId, address winner, uint256 totalPool, uint256 fee, uint256 payout, uint256 timestamp)"
+  "event GameCompleted(uint256 gameId, address winner, uint256 totalPool, uint256 fee, uint256 payout, bytes32 txHash, uint256 timestamp)"
 ];
 const IFACE = new Interface(EVENT_ABI);
 const TOPIC = id("GameCompleted(uint256,address,uint256,uint256,uint256,uint256)");
@@ -52,7 +52,7 @@ export default function GameHistory() {
         const parsed: HistoryItem[] = logs.map((log: any) => {
           const decoded = IFACE.parseLog({ topics: log.topics, data: log.data });
           if (!decoded) return null as any;
-          const [gameId, winner, totalPool, fee, payout, ts] = decoded.args;
+          const [gameId, winner, totalPool, fee, payout, _txHash, ts] = decoded.args;
           return {
             gameId: Number(gameId),
             winner: String(winner),
@@ -87,7 +87,7 @@ export default function GameHistory() {
           const newItems: HistoryItem[] = logs.map((log: any) => {
             const decoded = IFACE.parseLog({ topics: log.topics, data: log.data });
             if (!decoded) return null as any;
-            const [gameId, winner, totalPool, fee, payout, ts] = decoded.args;
+            const [gameId, winner, totalPool, fee, payout, _txHash, ts] = decoded.args;
             return {
               gameId: Number(gameId),
               winner: String(winner),

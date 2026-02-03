@@ -64,7 +64,7 @@ export function Sidebar() {
             <span className="font-mono text-lg font-bold text-foreground">
               {walletBalance
                 ? `${parseFloat(walletBalance).toFixed(4)} QUAI`
-                : (user?.tokens?.toFixed(2) ?? "---")
+                : "---"
               }
             </span>
           </div>

@@ -26,7 +26,7 @@ export default function PredictionArena() {
     const targetValue = selectedDirection === 'UP' ? currentTps + 100 : currentTps - 100;
 
     predict({
-      userId: user.id,
+      userId: Number(user.id),
       type: 'tps_spike',
       targetChainId: primeChain.id,
       predictedValue: targetValue,

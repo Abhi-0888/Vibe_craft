@@ -24,7 +24,7 @@ export default function GuardianGame() {
     defaultValues: {
       amount: 100,
       chainId: 0,
-      userId: user?.id || 0, // This gets overridden by backend usually, but needed for types
+      userId: user?.id ?? 0, // This gets overridden by backend usually, but needed for types
     }
   });
 
@@ -58,10 +58,10 @@ export default function GuardianGame() {
           Stake your QUAI tokens to secure specific chains. Higher stakes increase chain health and earn yield.
         </p>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <Form {...(form as any)}>
+          <form onSubmit={form.handleSubmit(onSubmit as any)} className="space-y-6">
             <FormField
-              control={form.control}
+              control={form.control as any}
               name="chainId"
               render={({ field }) => (
                 <FormItem>
@@ -89,11 +89,11 @@ export default function GuardianGame() {
             />
 
             <FormField
-              control={form.control}
+              control={form.control as any}
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Stake Amount (Max: {user?.tokens?.toFixed(0)})</FormLabel>
+                  <FormLabel>Stake Amount</FormLabel>
                   <FormControl>
                     <Input 
                       type="number" 
