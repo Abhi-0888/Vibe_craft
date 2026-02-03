@@ -23,8 +23,8 @@ const CARD_VALUES: Record<number, number> = { 0: 5, 1: 8, 2: 3, 3: 12, 4: 6 };
 
 const CONTRACT_ADDRESS = "0x0D0024F68D4A979621951E4749795840f01a5b25";
 const CONTRACT_ABI = [
-  "function joinTeam(uint256 _teamId) payable",
-  "function beginGame()",
+  "function joinGame() payable",
+  "function startGame()",
   "function getMyDeck() view returns (uint256[])",
   "function getGameState() view returns (bool, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
   "function playCard(uint256 index)",
@@ -155,6 +155,10 @@ export default function CardGame() {
         if (!mounted) return;
         setChainState(s);
 
+        if (s.winner > 0) {
+          setMessages([]); // Clear chat when game ends
+        }
+
         if (address) {
           const contractRW = await getContract(true);
           const deck: number[] = (await contractRW.getMyDeck()).map((n: any) => Number(n));
@@ -200,7 +204,7 @@ export default function CardGame() {
     }
   };
 
-  const handleJoin = async (team: number) => {
+  const handleJoin = async () => {
     if (!isConnected) {
       connect();
       return;
@@ -218,17 +222,17 @@ export default function CardGame() {
         return;
       }
       const contract = await getContract(true);
-      const tx = await contract.joinTeam(team, { value: parseEther(ENTRY) });
+      const tx = await contract.joinGame({ value: parseEther(ENTRY), gasLimit: 1000000 });
       await tx.wait();
       refreshBalance();
       toast({
-        title: "JOINED TEAM",
-        description: `You have joined Team ${team === TEAM_RED ? 'Red' : 'Blue'}!`,
+        title: "JOINED GAME",
+        description: "You have joined the game. Waiting for opponent.",
       });
     } catch (err: any) {
       toast({
         title: "ERROR",
-        description: err.message || "Failed to connect wallet",
+        description: err.message || "Failed to join",
         variant: "destructive",
       });
     }
@@ -253,7 +257,7 @@ export default function CardGame() {
           });
           return;
         }
-        const tx = await contract.beginGame();
+        const tx = await contract.startGame({ gasLimit: 1000000 });
         await tx.wait();
         // Immediately refresh state and decks so UI doesn't get stuck
         const state = await contract.getGameState();
@@ -313,8 +317,9 @@ export default function CardGame() {
       (async () => {
         try {
           const contract = await getContract(true);
-          const tx = await contract.resetGame();
+          const tx = await contract.resetGame({ gasLimit: 100000 });
           await tx.wait();
+          setMessages([]); // Clear chat
           toast({ title: "GAME RESET", description: "The game has been reset on-chain." });
         } catch (err: any) {
           toast({
@@ -454,22 +459,13 @@ export default function CardGame() {
             </div>
 
             {!myTeam && (
-              <>
-                <button
-                  onClick={() => isConnected ? handleJoin(TEAM_RED) : connect()}
-                  disabled={isJoining || isWalletLoading}
-                  className="w-full mt-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-900/20 hover:shadow-red-500/40 flex items-center justify-center gap-2"
-                >
-                  {isWalletLoading ? "Checking..." : (isConnected ? "Join Red Team" : "Connect Wallet")}
-                </button>
-                <button
-                  onClick={connect}
-                  disabled={isWalletLoading}
-                  className="w-full mt-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-red-900/20 hover:shadow-red-500/40 flex items-center justify-center gap-2"
-                >
-                  {isWalletLoading ? "Checking..." : (isConnected ? "Connect Wallet" : "Connect Wallet")}
-                </button>
-              </>
+              <button
+                onClick={() => isConnected ? handleJoin() : connect()}
+                disabled={isJoining || isWalletLoading}
+                className="w-full mt-8 py-4 bg-green-600 hover:bg-green-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-green-900/20 hover:shadow-green-500/40 flex items-center justify-center gap-2"
+              >
+                {isWalletLoading ? "Checking..." : (isConnected ? "Join Game" : "Connect Wallet")}
+              </button>
             )}
           </div>
         </div>
@@ -602,18 +598,18 @@ export default function CardGame() {
 
             {!myTeam && (
               <button
-                onClick={() => isConnected ? handleJoin(TEAM_BLUE) : connect()}
+                onClick={() => isConnected ? handleJoin() : connect()}
                 disabled={isJoining || isWalletLoading}
-                className="w-full mt-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-500/40 flex items-center justify-center gap-2"
+                className="w-full mt-8 py-4 bg-green-600 hover:bg-green-500 text-white font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-green-900/20 hover:shadow-green-500/40 flex items-center justify-center gap-2"
               >
-                {isWalletLoading ? "Checking..." : (isConnected ? "Join Blue Team" : "Connect Wallet")}
+                {isWalletLoading ? "Checking..." : (isConnected ? "Join Game" : "Connect Wallet")}
               </button>
             )}
           </div>
         </div>
 
         {/* Chat Section */}
-        {chainState?.active && (
+        {chainState?.active && chainState?.winner === 0 && (
           <div className="mt-8 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
             <div className="text-sm font-bold text-slate-300 mb-4">GAME CHAT</div>
             <div className="h-64 overflow-y-auto bg-black/30 p-3 rounded-lg border border-slate-700 mb-4">
