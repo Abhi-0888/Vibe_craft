@@ -51,8 +51,6 @@ export default function CardGame() {
     count2: number;
     cards1: number;
     cards2: number;
-    gameId: number;
-    prizePool: bigint;
   } | null>(null);
   const [myDeck, setMyDeck] = React.useState<number[]>([]);
   const [myTeamOnChain, setMyTeamOnChain] = React.useState<number>(0);
@@ -71,22 +69,21 @@ export default function CardGame() {
   
   const isMyTurn = !!chainState?.active && chainState?.turn === myTeam;
 
-  const CONTRACT_ADDRESS = "0x00024F68D4A979621951E4749795840fD1a5b526";
+  const CONTRACT_ADDRESS = "0x002700A6105233Da2fDe745a831E186bC49E933D";
   const ABI = [
     { "type":"function", "name":"ENTRY_FEE", "inputs":[], "outputs":[{"type":"uint256"}], "stateMutability":"view" },
     { "type":"function", "name":"joinGame", "inputs":[], "outputs":[], "stateMutability":"payable" },
-    { "type":"function", "name":"playCard", "inputs":[{"name":"index","type":"uint256"}], "outputs":[], "stateMutability":"nonpayable" },
-    { "type":"function", "name":"resetGame", "inputs":[], "outputs":[], "stateMutability":"nonpayable" },
-    { "type":"function", "name":"getMyDeck", "inputs":[], "outputs":[{"type":"uint256[]"}], "stateMutability":"view" },
-    { "type":"function", "name":"getGameState", "inputs":[], "outputs":[
+    { "type":"function", "name":"startGame", "inputs":[{"name":"gameId","type":"uint256"}], "outputs":[], "stateMutability":"nonpayable" },
+    { "type":"function", "name":"playCard", "inputs":[{"name":"gameId","type":"uint256"},{"name":"index","type":"uint256"}], "outputs":[], "stateMutability":"nonpayable" },
+    { "type":"function", "name":"getMyDeck", "inputs":[{"name":"gameId","type":"uint256"}], "outputs":[{"type":"uint256[]"}], "stateMutability":"view" },
+    { "type":"function", "name":"getGameState", "inputs":[{"name":"gameId","type":"uint256"}], "outputs":[
       {"type":"bool"},{"type":"uint256"},{"type":"uint256"},{"type":"uint256"},{"type":"uint256"},
-      {"type":"uint256"},{"type":"uint256"},{"type":"uint256"},{"type":"uint256"},{"type":"uint256"},{"type":"uint256"}
+      {"type":"uint256"},{"type":"uint256"},{"type":"uint256"},{"type":"uint256"}
     ], "stateMutability":"view" },
-    { "type":"function", "name":"players", "inputs":[{"type":"uint256"},{"type":"address"}], "outputs":[
-      {"type":"uint256[]"}, {"type":"uint256"}, {"type":"bool"}
-    ], "stateMutability":"view" },
-    { "type":"function", "name":"redPlayer", "inputs":[{"type":"uint256"}], "outputs":[{"type":"address"}], "stateMutability":"view" },
-    { "type":"function", "name":"bluePlayer", "inputs":[{"type":"uint256"}], "outputs":[{"type":"address"}], "stateMutability":"view" }
+    { "type":"function", "name":"getPlayerGame", "inputs":[{"name":"player","type":"address"}], "outputs":[{"type":"uint256"}], "stateMutability":"view" },
+    { "type":"function", "name":"getOpenGames", "inputs":[], "outputs":[{"type":"uint256[]"}], "stateMutability":"view" },
+    { "type":"function", "name":"getRedPlayer", "inputs":[{"name":"gameId","type":"uint256"}], "outputs":[{"type":"address"}], "stateMutability":"view" },
+    { "type":"function", "name":"getBluePlayer", "inputs":[{"name":"gameId","type":"uint256"}], "outputs":[{"type":"address"}], "stateMutability":"view" }
   ] as const;
 
   const getContract = async (withSigner: boolean) => {
@@ -106,38 +103,59 @@ export default function CardGame() {
         // @ts-ignore
         if (!window.pelagus) return;
         const contract = await getContract(false);
-        const state = await contract.getGameState();
-        const s = {
-          active: state[0],
-          turn: Number(state[1]),
-          winner: Number(state[2]),
-          hp1: Number(state[3]),
-          hp2: Number(state[4]),
-          count1: Number(state[5]),
-          count2: Number(state[6]),
-          cards1: Number(state[7]),
-          cards2: Number(state[8]),
-          gameId: Number(state[9]),
-          prizePool: BigInt(state[10])
-        };
-        if (!mounted) return;
-        setChainState(s);
-
-        // Load player addresses for UI
-        const [red, blue] = await Promise.all([
-          contract.redPlayer(s.gameId),
-          contract.bluePlayer(s.gameId),
-        ]);
-        setRedAddress(red === "0x0000000000000000000000000000000000000000" ? null : red);
-        setBlueAddress(blue === "0x0000000000000000000000000000000000000000" ? null : blue);
-
+        
+        let gameId: number | null = null;
         if (address) {
-          const contractRW = await getContract(true);
-          const deck: number[] = (await contractRW.getMyDeck()).map((n: any) => Number(n));
-          setMyDeck(deck);
-          const playerTuple = await contractRW.players(s.gameId, address);
-          const teamFromChain = Number(playerTuple[1] ?? 0);
-          setMyTeamOnChain(teamFromChain);
+          gameId = Number(await contract.getPlayerGame(address));
+          if (gameId === 0) gameId = null;
+        }
+        setCurrentGameId(gameId);
+
+        if (gameId) {
+          const state = await contract.getGameState(gameId);
+          const s = {
+            active: state[0],
+            turn: Number(state[1]),
+            winner: Number(state[2]),
+            hp1: Number(state[3]),
+            hp2: Number(state[4]),
+            count1: Number(state[5]),
+            count2: Number(state[6]),
+            cards1: Number(state[7]),
+            cards2: Number(state[8])
+          };
+          if (!mounted) return;
+          setChainState(s);
+
+          // Load player addresses for UI
+          const [red, blue] = await Promise.all([
+            contract.getRedPlayer(gameId),
+            contract.getBluePlayer(gameId),
+          ]);
+          setRedAddress(red === "0x0000000000000000000000000000000000000000" ? null : red);
+          setBlueAddress(blue === "0x0000000000000000000000000000000000000000" ? null : blue);
+
+          // Set team
+          if (address) {
+            if (red === address) setMyTeamOnChain(1);
+            else if (blue === address) setMyTeamOnChain(2);
+            else setMyTeamOnChain(0);
+          }
+
+          if (address) {
+            const contractRW = await getContract(true);
+            const deck: number[] = (await contractRW.getMyDeck(gameId)).map((n: any) => Number(n));
+            setMyDeck(deck);
+            // Team is already set from previous, but since contract changed, need to get team from somewhere.
+            // Since playerGame is set, and team is in the game, but to get team, perhaps add getPlayerTeam or something.
+            // For now, assume team is 1 if redPlayer == address, but since no getter, perhaps store team locally.
+            // Let's add a function to get team.
+            // But to keep simple, since when joining, we can set myTeam locally.
+          }
+        } else {
+          setChainState(null);
+          setMyDeck([]);
+          setMyTeamOnChain(0);
         }
         setIsLoadingState(false);
       } catch (e) {
@@ -202,7 +220,10 @@ export default function CardGame() {
         }
         const tx = await contract.joinGame({ value: onChainFee });
         await tx.wait();
-        const state = await contract.getGameState();
+        // Get the gameId for the player
+        const gameId = Number(await contract.getPlayerGame(address));
+        setCurrentGameId(gameId);
+        const state = await contract.getGameState(gameId);
         setChainState({
           active: state[0],
           turn: Number(state[1]),
@@ -212,15 +233,12 @@ export default function CardGame() {
           count1: Number(state[5]),
           count2: Number(state[6]),
           cards1: Number(state[7]),
-          cards2: Number(state[8]),
-          gameId: Number(state[9]),
-          prizePool: BigInt(state[10]),
+          cards2: Number(state[8])
         });
         if (address) {
-          const deck: number[] = (await contract.getMyDeck()).map((n: any) => Number(n));
+          const deck: number[] = (await contract.getMyDeck(gameId)).map((n: any) => Number(n));
           setMyDeck(deck);
-          const playerTuple = await contract.players(Number(state[9]), address);
-          setMyTeamOnChain(Number(playerTuple[1] ?? 0));
+          // Team will be set in poll
         }
         toast({ title: state[0] ? "MATCH STARTED" : "WAITING FOR OPPONENT", description: state[0] ? "Cards dealt. Game is active." : "You are queued. Another player must join." });
       } catch (err: any) {
@@ -242,7 +260,7 @@ export default function CardGame() {
     (async () => {
       try {
         const contract = await getContract(true);
-        const tx = await contract.playCard(index);
+        const tx = await contract.playCard(currentGameId, index);
         await tx.wait();
       } catch (err: any) {
         toast({
@@ -275,8 +293,47 @@ export default function CardGame() {
     })();
   };
 
-  if (!chainState || isLoadingState) return <div className="p-8 text-center text-slate-400">Loading Game State...</div>;
+  if (isLoadingState) return <div className="p-8 text-center text-slate-400">Loading Game State...</div>;
 
+  // If not in a game, show matchmaking screen
+  if (!currentGameId) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 p-8 font-sans flex items-center justify-center">
+        <div className="text-center space-y-8">
+          <div className="flex items-center justify-center space-x-4 mb-8">
+            <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20">
+              <Sword size={32} className="text-yellow-500" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">
+                Quai<span className="text-yellow-500">Clash</span>
+              </h1>
+              <p className="text-slate-500 font-mono text-sm">Decentralized Card Battle Arena</p>
+            </div>
+          </div>
+          
+          <div className="space-y-4">
+            <p className="text-slate-400 text-lg">Find an opponent and battle with cards on Quai Network</p>
+            <p className="text-slate-500 text-sm">Entry fee: 0.0067 QUAI • Winner takes 97% of the pot</p>
+          </div>
+          
+          <button 
+            onClick={handlePlayMatch}
+            className="px-12 py-6 bg-yellow-500 hover:bg-yellow-400 text-black font-black text-2xl rounded-2xl shadow-2xl shadow-yellow-500/30 transform hover:scale-105 transition-all duration-200 flex items-center gap-4 mx-auto"
+          >
+            <Play size={32} />
+            PLAY GAME
+          </button>
+          
+          {!isConnected && (
+            <p className="text-slate-400 text-sm">Connect your Pelagus wallet to play</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // In game
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 p-8 font-sans">
       
@@ -298,47 +355,51 @@ export default function CardGame() {
           {/* Game Controls */}
           <div className="flex gap-2">
             <button 
-              onClick={handleReset}
-              disabled={isResetting}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 border border-slate-700"
+              onClick={() => setCurrentGameId(null)} // Allow leaving game
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg flex items-center gap-2 transition-colors border border-slate-700"
             >
-              <RotateCcw size={16} /> RESET
+              <RotateCcw size={16} /> NEW GAME
             </button>
           </div>
 
           <div className="flex items-center gap-6 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
             <div className="text-right">
-              <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Prize Pool</div>
-              <div className="text-2xl font-black text-yellow-400 flex items-center justify-end gap-2">
-                <Coins size={20} />
-                {chainState.prizePool ? formatEther(chainState.prizePool) : "0"} QUAI
-              </div>
-            </div>
-            <div className="h-10 w-px bg-slate-800"></div>
-            <div className="text-right">
-              <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Platform Fee (3%)</div>
-              <div className="text-lg font-bold text-slate-300">
-                {chainState.prizePool ? (Number(formatEther(chainState.prizePool)) * 0.03).toFixed(6) : "0"} QUAI
-              </div>
-            </div>
-            <div className="h-10 w-px bg-slate-800"></div>
-            <div className="text-right">
-              <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Winner Payout (97%)</div>
-              <div className="text-lg font-bold text-green-400">
-                {chainState.prizePool ? (Number(formatEther(chainState.prizePool)) * 0.97).toFixed(6) : "0"} QUAI
-              </div>
-            </div>
-            <div className="h-10 w-px bg-slate-800"></div>
-            <div className="text-right">
               <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Game ID</div>
-              <div className="text-2xl font-black text-white">#{chainState.gameId}</div>
+              <div className="text-2xl font-black text-white">#{currentGameId}</div>
+            </div>
+            <div className="h-10 w-px bg-slate-800"></div>
+            <div className="text-right">
+              <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Your Team</div>
+              <div className="text-lg font-bold text-white">
+                {myTeam === 1 ? 'RED' : myTeam === 2 ? 'BLUE' : 'Spectator'}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* MAIN BATTLE ARENA */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+      {/* MATCHMAKING STATUS */}
+      {!chainState?.active && (
+        <div className="max-w-7xl mx-auto mb-12 text-center">
+          <div className="bg-slate-900/50 p-8 rounded-2xl border border-slate-800">
+            <div className="animate-pulse text-yellow-400 text-2xl font-black mb-4">
+              Waiting for opponent...
+            </div>
+            <div className="text-slate-300 text-lg">
+              You are on Team {myTeam === 1 ? 'RED' : 'BLUE'}
+            </div>
+            <div className="text-slate-500 text-sm mt-2">
+              Game ID: #{currentGameId}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GAME UI */}
+      {chainState?.active && (
+        <div>
+          {/* MAIN BATTLE ARENA */}
+          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         {/* LEFT TEAM (RED) */}
         <div className={`lg:col-span-3 space-y-6 transition-all duration-500 ${chainState.turn === 1 ? 'scale-105 z-10' : 'opacity-80'}`}>
@@ -518,7 +579,7 @@ export default function CardGame() {
           {/* CHAT PANEL - only visible during active match */}
           {chainState.active && chainState.winner === 0 && (
             <div className="w-full mt-6">
-              <ChatPanel gameId={chainState.gameId} />
+              <ChatPanel gameId={currentGameId!} />
             </div>
           )}
         </div>
@@ -579,6 +640,7 @@ export default function CardGame() {
         </div>
 
       </div>
-    </div>
-  );
+</div>
+);
 }
+

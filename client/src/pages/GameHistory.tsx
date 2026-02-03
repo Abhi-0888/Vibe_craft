@@ -5,7 +5,7 @@ import { CyberCard } from "@/components/CyberCard";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { usePelagus } from "@/hooks/use-pelagus";
 
-const CONTRACT_ADDRESS = "0x00024F68D4A979621951E4749795840fD1a5b526";
+const CONTRACT_ADDRESS = "0x002700A6105233Da2fDe745a831E186bC49E933D";
 const EVENT_ABI = [
   "event GameCompleted(uint256 gameId, address winner, uint256 totalPool, uint256 fee, uint256 payout, bytes32 txHash, uint256 timestamp)"
 ];
