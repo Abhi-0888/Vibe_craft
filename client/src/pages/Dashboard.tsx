@@ -17,7 +17,7 @@ const MOCK_DATA = [
 
 export default function Dashboard() {
   const { data: user } = useMe();
-  const { balance: walletBalance, refreshBalance, isConnected, connect, isLoading: isWalletLoading } = usePelagus();
+  const { balance: walletBalance, address, refreshBalance, isConnected, connect, isLoading: isWalletLoading } = usePelagus();
 
   useEffect(() => {
     const interval = setInterval(refreshBalance, 10000);
@@ -44,6 +44,26 @@ export default function Dashboard() {
             UPLINK ACTIVE
           </div>
           <div className="text-primary font-bold">LATENCY: 14ms</div>
+          <div className="ml-4">
+            {!isConnected ? (
+              <button
+                onClick={connect}
+                disabled={isWalletLoading}
+                className="px-3 py-2 bg-primary/20 hover:bg-primary/40 border border-primary/50 rounded text-xs text-primary uppercase font-bold tracking-wider transition-all"
+              >
+                {isWalletLoading ? "..." : "Connect Wallet"}
+              </button>
+            ) : (
+              <div className="flex items-center gap-3 text-xs">
+                <span className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-foreground">
+                  {walletBalance ? `${parseFloat(walletBalance).toFixed(4)} QUAI` : "0 QUAI"}
+                </span>
+                <span className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-muted-foreground">
+                  {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Unknown"}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -67,7 +87,7 @@ export default function Dashboard() {
             <Pickaxe className="h-4 w-4 text-primary group-hover:rotate-12 transition-transform" />
           </div>
           <div className="text-3xl font-display font-bold text-shadow-glow">
-            {user?.miningPower || 0} <span className="text-sm font-mono text-primary">H/s</span>
+            {0} <span className="text-sm font-mono text-primary">H/s</span>
           </div>
           <div className="absolute bottom-0 left-0 h-1 bg-primary w-full opacity-20" />
         </CyberCard>

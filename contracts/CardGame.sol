@@ -38,8 +38,19 @@ contract CardGame {
     event CardPlayed(address player, uint team, uint cardId, uint damage);
     event GameEnded(uint winningTeam, uint256 totalPrize);
     event PayoutSent(address player, uint256 amount);
+    event GameCompleted(
+        uint256 gameId,
+        address winner,
+        uint256 totalPool,
+        uint256 fee,
+        uint256 payout,
+        uint256 timestamp
+    );
 
-    constructor() {
+    address public PLATFORM_TREASURY;
+
+    constructor(address _treasury) {
+        PLATFORM_TREASURY = _treasury;
         cards[0] = Card(5);
         cards[1] = Card(8);
         cards[2] = Card(3);
@@ -157,7 +168,7 @@ contract CardGame {
         uint opponentTeam = (p.team == 1) ? 2 : 1;
         if (teamHP[opponentTeam] <= damage) {
             teamHP[opponentTeam] = 0;
-            finishGame(p.team);
+            finishGame(p.team, msg.sender);
             return;
         } else {
             teamHP[opponentTeam] -= damage;
@@ -171,13 +182,13 @@ contract CardGame {
 
         if (teamCards[opponentTeam] == 0) {
             if (teamCards[p.team] > 0) {
-                finishGame(p.team);
+                finishGame(p.team, msg.sender);
                 return;
             } else {
                 if (teamHP[p.team] >= teamHP[opponentTeam]) {
-                    finishGame(p.team); 
+                    finishGame(p.team, msg.sender); 
                 } else {
-                    finishGame(opponentTeam); 
+                    finishGame(opponentTeam, msg.sender); 
                 }
                 return;
             }
@@ -186,23 +197,22 @@ contract CardGame {
         currentTeamTurn = opponentTeam;
     }
     
-    function finishGame(uint winner) internal {
+    function finishGame(uint winner, address winnerAddress) internal {
         gameActive = false;
         winnerTeam = winner;
         
         uint256 totalPool = gamePrizePool[gameId];
-        address[] memory winners = teamMembers[gameId][winner];
-        uint256 winnerCount = winners.length;
-
-        if (winnerCount > 0 && totalPool > 0) {
-            uint256 share = totalPool / winnerCount;
-            for (uint i = 0; i < winnerCount; i++) {
-                payable(winners[i]).transfer(share);
-                emit PayoutSent(winners[i], share);
-            }
+        if (totalPool > 0 && winnerAddress != address(0)) {
+            uint256 fee = (totalPool * 3) / 100;
+            uint256 payout = totalPool - fee;
+            payable(winnerAddress).transfer(payout);
+            emit PayoutSent(winnerAddress, payout);
+            payable(PLATFORM_TREASURY).transfer(fee);
+            emit PayoutSent(PLATFORM_TREASURY, fee);
         }
 
         emit GameEnded(winner, totalPool);
+        emit GameCompleted(gameId, winnerAddress, totalPool, (totalPool * 3) / 100, totalPool - ((totalPool * 3) / 100), block.timestamp);
     }
 
     function getMyDeck() public view returns (uint[] memory) {

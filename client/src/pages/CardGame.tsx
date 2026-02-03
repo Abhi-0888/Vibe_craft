@@ -13,6 +13,7 @@ import { BrowserProvider, Contract } from "quais";
 import { parseEther, formatEther } from "ethers";
 import { Sword, Users, Zap, RefreshCw, ShieldAlert, Coins, Play, RotateCcw } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { ChatPanel } from "@/components/ChatPanel";
 import { CardGamePlayer } from "@shared/schema";
 
 const TEAM_RED = 1;
@@ -295,6 +296,20 @@ export default function CardGame() {
             </div>
             <div className="h-10 w-px bg-slate-800"></div>
             <div className="text-right">
+              <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Platform Fee (3%)</div>
+              <div className="text-lg font-bold text-slate-300">
+                {chainState.prizePool ? (Number(formatEther(chainState.prizePool)) * 0.03).toFixed(6) : "0"} QUAI
+              </div>
+            </div>
+            <div className="h-10 w-px bg-slate-800"></div>
+            <div className="text-right">
+              <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Winner Payout (97%)</div>
+              <div className="text-lg font-bold text-green-400">
+                {chainState.prizePool ? (Number(formatEther(chainState.prizePool)) * 0.97).toFixed(6) : "0"} QUAI
+              </div>
+            </div>
+            <div className="h-10 w-px bg-slate-800"></div>
+            <div className="text-right">
               <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Game ID</div>
               <div className="text-2xl font-black text-white">#{chainState.gameId}</div>
             </div>
@@ -449,6 +464,11 @@ export default function CardGame() {
               </div>
             </div>
           )}
+
+          {/* CHAT PANEL */}
+          <div className="w-full mt-6">
+            <ChatPanel gameId={chainState.gameId} />
+          </div>
         </div>
 
         {/* RIGHT TEAM (BLUE) */}

@@ -4,6 +4,7 @@ import ChainMap from "@/pages/ChainMap";
 import GuardianGame from "@/pages/GuardianGame";
 import MinerTycoon from "@/pages/MinerTycoon";
 import CardGame from "@/pages/CardGame";
+import GameHistory from "@/pages/GameHistory";
 import NftGallery from "@/pages/NftGallery";
 import QuestBoard from "@/pages/QuestBoard";
 import TeamHub from "@/pages/TeamHub";
@@ -28,6 +29,7 @@ export default function Home() {
           <Route path="/guardian" component={GuardianGame} />
           <Route path="/miner" component={MinerTycoon} />
           <Route path="/card-game" component={CardGame} />
+          <Route path="/history" component={GameHistory} />
           <Route path="/nfts" component={NftGallery} />
           <Route path="/quests" component={QuestBoard} />
           <Route path="/teams" component={TeamHub} />

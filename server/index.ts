@@ -21,6 +21,7 @@ import { setupVite } from "./vite";
 import { serveStatic } from "./static";
 import fs from "fs";
 import { createServer } from "http";
+import { setupChatServer } from "./chat";
 
 const app = express();
 const httpServer = createServer(app);
@@ -123,6 +124,9 @@ const runServer = async () => {
 
     await registerRoutes(httpServer, app);
     console.log("Routes registered successfully.");
+
+    setupChatServer(httpServer);
+    console.log("Chat WebSocket server initialized.");
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
