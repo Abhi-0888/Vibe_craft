@@ -158,6 +158,11 @@ export default function CardGame() {
     }
     (async () => {
       try {
+        if (chainState && chainState.winner !== 0 && !chainState.active) {
+          const contract = await getContract(true);
+          const txReset = await contract.resetGame();
+          await txReset.wait();
+        }
         const ENTRY = "0.0067";
         const bal = parseFloat(balance || "0");
         if (bal < parseFloat(ENTRY)) {
@@ -433,14 +438,14 @@ export default function CardGame() {
                      </div>
                    </div>
                  </div>
-                 {!chainState.active && chainState.winner === 0 && (
+                {(!chainState.active || chainState.winner !== 0) && (
                    <div className="mt-4">
                      <button 
                        onClick={handlePlayMatch}
                        disabled={isWalletLoading}
                        className="px-6 py-3 bg-primary/80 hover:bg-primary text-white font-black rounded-xl transition-all"
                      >
-                       {isWalletLoading ? "Connecting..." : "JOIN GAME"}
+                      {isWalletLoading ? "Connecting..." : "JOIN GAME"}
                      </button>
                    </div>
                  )}
