@@ -73,14 +73,34 @@ contract CardGame {
             _startNewGame();
         }
 
-        require(msg.value == ENTRY_FEE, "Entry Fee is 0.0067 QUAI");
+        // Allow >= ENTRY_FEE to avoid precision issues from some wallets
+        require(msg.value >= ENTRY_FEE, "Entry Fee too low");
         require(!players[gameId][msg.sender].hasJoined, "Already joined this game");
 
         uint team;
-        if (redPlayer[gameId] == address(0)) {
+        address red = redPlayer[gameId];
+        address blue = bluePlayer[gameId];
+
+        if (red == address(0) && blue == address(0)) {
+            // First player joins this gameId: randomly assign Red or Blue
+            uint256 rand = uint256(
+                keccak256(
+                    abi.encodePacked(block.timestamp, msg.sender, block.prevrandao, gameId)
+                )
+            ) % 2;
+            if (rand == 0) {
+                team = 1;
+                redPlayer[gameId] = msg.sender;
+            } else {
+                team = 2;
+                bluePlayer[gameId] = msg.sender;
+            }
+        } else if (red == address(0)) {
+            // Only Red empty, assign current joiner to Red
             team = 1;
             redPlayer[gameId] = msg.sender;
-        } else if (bluePlayer[gameId] == address(0)) {
+        } else if (blue == address(0)) {
+            // Only Blue empty, assign current joiner to Blue
             team = 2;
             bluePlayer[gameId] = msg.sender;
         } else {

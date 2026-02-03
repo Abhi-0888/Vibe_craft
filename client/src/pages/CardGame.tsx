@@ -58,6 +58,8 @@ export default function CardGame() {
   const [myTeamOnChain, setMyTeamOnChain] = React.useState<number>(0);
   const [isLoadingState, setIsLoadingState] = React.useState<boolean>(true);
   const [isResetting, setIsResetting] = React.useState<boolean>(false);
+  const [redAddress, setRedAddress] = React.useState<string | null>(null);
+  const [blueAddress, setBlueAddress] = React.useState<string | null>(null);
   
   const { toast } = useToast();
 
@@ -81,7 +83,9 @@ export default function CardGame() {
     ], "stateMutability":"view" },
     { "type":"function", "name":"players", "inputs":[{"type":"uint256"},{"type":"address"}], "outputs":[
       {"type":"uint256[]"}, {"type":"uint256"}, {"type":"bool"}
-    ], "stateMutability":"view" }
+    ], "stateMutability":"view" },
+    { "type":"function", "name":"redPlayer", "inputs":[{"type":"uint256"}], "outputs":[{"type":"address"}], "stateMutability":"view" },
+    { "type":"function", "name":"bluePlayer", "inputs":[{"type":"uint256"}], "outputs":[{"type":"address"}], "stateMutability":"view" }
   ] as const;
 
   const getContract = async (withSigner: boolean) => {
@@ -117,6 +121,14 @@ export default function CardGame() {
         };
         if (!mounted) return;
         setChainState(s);
+
+        // Load player addresses for UI
+        const [red, blue] = await Promise.all([
+          contract.redPlayer(s.gameId),
+          contract.bluePlayer(s.gameId),
+        ]);
+        setRedAddress(red === "0x0000000000000000000000000000000000000000" ? null : red);
+        setBlueAddress(blue === "0x0000000000000000000000000000000000000000" ? null : blue);
 
         if (address) {
           const contractRW = await getContract(true);
@@ -373,7 +385,7 @@ export default function CardGame() {
             </div>
           </div>
 
-          {/* GAME STATUS MESSAGE + PLAY BUTTON */}
+          {/* GAME STATUS MESSAGE + JOIN BUTTON + PLAYER INFO */}
           <div className="w-full mb-8 text-center">
              {chainState.winner !== 0 ? (
                <div className="bg-yellow-500/10 border border-yellow-500/50 p-6 rounded-2xl animate-bounce">
@@ -383,8 +395,8 @@ export default function CardGame() {
                  <p className="text-yellow-200/80 font-mono">Game Over - Rewards Distributed</p>
                </div>
              ) : (
-               <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl backdrop-blur-sm transition-all duration-300">
-                 <div className="flex items-center justify-center gap-3 mb-2">
+               <div className="bg-slate-900/50 border border-slate-800 p-6 rounded-2xl backdrop-blur-sm transition-all duration-300 space-y-4">
+                 <div className="flex items-center justify-center gap-3">
                    <RefreshCw size={20} className={`text-blue-400 ${chainState.active ? 'animate-spin' : ''}`} />
                    <h3 className="text-xl font-bold text-white uppercase tracking-widest">
                      {chainState.active ? (
@@ -399,6 +411,28 @@ export default function CardGame() {
                  <p className="text-slate-500 text-sm font-mono">
                    {chainState.active ? (isMyTurn ? "It's your team's turn! Play a card!" : "Waiting for opponent...") : "Waiting for game start..."}
                  </p>
+
+                 {/* Player vs Player info */}
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left text-xs font-mono">
+                   <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                     <div className="text-slate-500 mb-1">Red Player</div>
+                     <div className="text-slate-200 break-all">
+                       {redAddress ? `${redAddress.slice(0, 8)}...${redAddress.slice(-4)}` : "Waiting..."}
+                     </div>
+                   </div>
+                   <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                     <div className="text-slate-500 mb-1">Blue Player</div>
+                     <div className="text-slate-200 break-all">
+                       {blueAddress ? `${blueAddress.slice(0, 8)}...${blueAddress.slice(-4)}` : "Waiting..."}
+                     </div>
+                   </div>
+                   <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+                     <div className="text-slate-500 mb-1">You</div>
+                     <div className="text-slate-200">
+                       {myTeam ? `Team ${myTeam === TEAM_RED ? 'Red' : 'Blue'}` : "Not joined"}
+                     </div>
+                   </div>
+                 </div>
                  {!chainState.active && chainState.winner === 0 && (
                    <div className="mt-4">
                      <button 
