@@ -11,9 +11,8 @@ import {
 import { usePelagus } from "@/hooks/use-pelagus";
 import { BrowserProvider, Contract } from "quais";
 import { parseEther, formatEther } from "ethers";
-import { Sword, Users, Zap, RefreshCw, ShieldAlert, Coins, Play, RotateCcw } from 'lucide-react';
+import { Sword, Users, Zap, RefreshCw, ShieldAlert, Coins, Play, RotateCcw, Send } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { ChatPanel } from "@/components/ChatPanel";
 import { CardGamePlayer } from "@shared/schema";
 
 const TEAM_RED = 1;
@@ -21,6 +20,16 @@ const TEAM_BLUE = 2;
 
 // Card values mapping (from server/storage.ts)
 const CARD_VALUES: Record<number, number> = { 0: 5, 1: 8, 2: 3, 3: 12, 4: 6 };
+
+const CONTRACT_ADDRESS = "0x0D0024F68D4A979621951E4749795840f01a5b25";
+const CONTRACT_ABI = [
+  "function joinTeam(uint256 _teamId) payable",
+  "function beginGame()",
+  "function getMyDeck() view returns (uint256[])",
+  "function getGameState() view returns (bool, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
+  "function playCard(uint256 index)",
+  "function resetGame()"
+];
 
 const Card = ({ id, index, onClick, disabled }: { id: number, index: number, onClick?: (index: number) => void, disabled?: boolean }) => (
   <div
@@ -62,6 +71,10 @@ export default function CardGame() {
   } | null>(null);
   const [myDeck, setMyDeck] = React.useState<number[]>([]);
   const [myTeamOnChain, setMyTeamOnChain] = React.useState<number>(0);
+  const [contract, setContract] = React.useState<Contract | null>(null);
+  const [ws, setWs] = React.useState<WebSocket | null>(null);
+  const [messages, setMessages] = React.useState<any[]>([]);
+  const [chatInput, setChatInput] = React.useState('');
   const [isLoadingState, setIsLoadingState] = React.useState<boolean>(true);
   
   const { mutate: joinGame, isPending: isJoining } = useJoinCardGame();
@@ -70,6 +83,19 @@ export default function CardGame() {
   const { mutate: resetGame, isPending: isResetting } = useResetCardGame();
   
   const { toast } = useToast();
+
+  // Setup contract
+  React.useEffect(() => {
+    if (isConnected && address) {
+      const setupContract = async () => {
+        const provider = new BrowserProvider((window as any).pelagus);
+        const signer = await provider.getSigner();
+        const contractInstance = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+        setContract(contractInstance);
+      };
+      setupContract();
+    }
+  }, [isConnected, address]);
 
   const myTeam = myTeamOnChain || 0;
   
@@ -150,6 +176,30 @@ export default function CardGame() {
     };
   }, [address]);
 
+  // Setup chat
+  React.useEffect(() => {
+    if (chainState?.gameId && address) {
+      const ws = new WebSocket(`ws://localhost:5005/ws/chat?gameId=${chainState.gameId}&address=${address}`);
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'chat') {
+          setMessages(prev => [...prev, { ...msg, ts: new Date(msg.ts) }]);
+        }
+      };
+      setWs(ws);
+      return () => {
+        ws.close();
+      };
+    }
+  }, [chainState?.gameId, address]);
+
+  const sendMessage = () => {
+    if (ws && chatInput.trim()) {
+      ws.send(JSON.stringify({ text: chatInput }));
+      setChatInput('');
+    }
+  };
+
   const handleJoin = async (team: number) => {
     if (!isConnected) {
       connect();
@@ -192,13 +242,45 @@ export default function CardGame() {
     (async () => {
       try {
         const contract = await getContract(true);
+        // @ts-ignore
+        const provider = new BrowserProvider(window.pelagus);
+        const code = await provider.send("eth_getCode", [CONTRACT_ADDRESS, "latest"]);
+        if (!code || code === "0x") {
+          toast({
+            title: "CONTRACT NOT FOUND",
+            description: "CardGame is not deployed at this address on the current network.",
+            variant: "destructive",
+          });
+          return;
+        }
         const tx = await contract.beginGame();
         await tx.wait();
-        toast({ title: "GAME STARTED", description: "Battle commenced on-chain." });
+        // Immediately refresh state and decks so UI doesn't get stuck
+        const state = await contract.getGameState();
+        setChainState({
+          active: state[0],
+          turn: Number(state[1]),
+          winner: Number(state[2]),
+          hp1: Number(state[3]),
+          hp2: Number(state[4]),
+          count1: Number(state[5]),
+          count2: Number(state[6]),
+          cards1: Number(state[7]),
+          cards2: Number(state[8]),
+          gameId: Number(state[9]),
+          prizePool: BigInt(state[10]),
+        });
+        if (address) {
+          const deck: number[] = (await contract.getMyDeck()).map((n: any) => Number(n));
+          setMyDeck(deck);
+          const playerTuple = await contract.players(Number(state[9]), address);
+          setMyTeamOnChain(Number(playerTuple[1] ?? 0));
+        }
+        toast({ title: "GAME STARTED", description: "Cards dealt and game is now active." });
       } catch (err: any) {
         toast({
           title: "ERROR",
-          description: err.message,
+          description: err?.reason || err?.message || "Failed to start game",
           variant: "destructive",
         });
       }
@@ -465,10 +547,6 @@ export default function CardGame() {
             </div>
           )}
 
-          {/* CHAT PANEL */}
-          <div className="w-full mt-6">
-            <ChatPanel gameId={chainState.gameId} />
-          </div>
         </div>
 
         {/* RIGHT TEAM (BLUE) */}
@@ -533,6 +611,35 @@ export default function CardGame() {
             )}
           </div>
         </div>
+
+        {/* Chat Section */}
+        {chainState?.active && (
+          <div className="mt-8 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+            <div className="text-sm font-bold text-slate-300 mb-4">GAME CHAT</div>
+            <div className="h-64 overflow-y-auto bg-black/30 p-3 rounded-lg border border-slate-700 mb-4">
+              {messages.map((msg, i) => (
+                <div key={i} className="text-xs text-slate-400 mb-2">
+                  <span className="text-yellow-400 font-bold">{msg.address?.slice(0,6)}...{msg.address?.slice(-4)}</span>: {msg.text}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                placeholder="Type message..."
+                className="flex-1 px-3 py-2 bg-black/50 border border-slate-700 rounded-lg text-white text-sm"
+              />
+              <button
+                onClick={sendMessage}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg flex items-center gap-2"
+              >
+                <Send size={14} /> Send
+              </button>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

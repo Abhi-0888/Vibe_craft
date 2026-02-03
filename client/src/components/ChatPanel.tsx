@@ -12,13 +12,25 @@ function shortAddr(addr?: string) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
-export function ChatPanel({ gameId }: { gameId: number }) {
+export function ChatPanel({ gameId, isActive }: { gameId: number; isActive: boolean }) {
   const { address } = usePelagus();
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [input, setInput] = React.useState("");
   const wsRef = React.useRef<WebSocket | null>(null);
 
   React.useEffect(() => {
+    if (!isActive) {
+      // Clear messages and close any socket when inactive
+      setMessages([]);
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(JSON.stringify({ type: "end-game", gameId }));
+        } catch {}
+      }
+      wsRef.current?.close();
+      wsRef.current = null;
+      return;
+    }
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     const url = `${proto}://${window.location.host}/ws/chat?gameId=${gameId}&address=${address || ""}`;
     const ws = new WebSocket(url);
@@ -37,10 +49,10 @@ export function ChatPanel({ gameId }: { gameId: number }) {
     return () => {
       ws.close();
     };
-  }, [gameId, address]);
+  }, [gameId, address, isActive]);
 
   const send = () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !isActive) return;
     const payload = JSON.stringify({ text: input.trim() });
     wsRef.current?.send(payload);
     setInput("");

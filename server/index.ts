@@ -18,6 +18,7 @@ import { rateLimit } from "express-rate-limit";
 import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite } from "./vite";
+import { Server as SocketServer } from "socket.io";
 import { serveStatic } from "./static";
 import fs from "fs";
 import { createServer } from "http";
