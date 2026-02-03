@@ -73,6 +73,7 @@ export default function CardGame() {
 
   const CONTRACT_ADDRESS = "0x00024F68D4A979621951E4749795840fD1a5b526";
   const ABI = [
+    { "type":"function", "name":"ENTRY_FEE", "inputs":[], "outputs":[{"type":"uint256"}], "stateMutability":"view" },
     { "type":"function", "name":"joinGame", "inputs":[], "outputs":[], "stateMutability":"payable" },
     { "type":"function", "name":"playCard", "inputs":[{"name":"index","type":"uint256"}], "outputs":[], "stateMutability":"nonpayable" },
     { "type":"function", "name":"resetGame", "inputs":[], "outputs":[], "stateMutability":"nonpayable" },
@@ -158,24 +159,24 @@ export default function CardGame() {
     }
     (async () => {
       try {
-        if (chainState && chainState.winner !== 0 && !chainState.active) {
-          const contract = await getContract(true);
-          const txReset = await contract.resetGame();
-          await txReset.wait();
-        }
-        const ENTRY = "0.0067";
-        const bal = parseFloat(balance || "0");
-        if (bal < parseFloat(ENTRY)) {
+        const contract = await getContract(true);
+        // Read exact entry fee from the contract so we always send the correct value
+        const onChainFee: bigint = await contract.ENTRY_FEE();
+
+        // @ts-ignore
+        const provider = new BrowserProvider(window.pelagus);
+        const signer = await provider.getSigner();
+        const walletBalance: bigint = await provider.getBalance(await signer.getAddress());
+
+        if (walletBalance < onChainFee) {
           toast({
             title: "INSUFFICIENT BALANCE",
-            description: "Not enough QUAI in wallet to play.",
+            description: "Not enough QUAI in wallet to join.",
             variant: "destructive",
           });
           return;
         }
-        const contract = await getContract(true);
-        // @ts-ignore
-        const provider = new BrowserProvider(window.pelagus);
+
         const code = await provider.send("eth_getCode", [CONTRACT_ADDRESS, "latest"]);
         if (!code || code === "0x") {
           toast({
@@ -185,7 +186,7 @@ export default function CardGame() {
           });
           return;
         }
-        const tx = await contract.joinGame({ value: parseEther(ENTRY) });
+        const tx = await contract.joinGame({ value: onChainFee });
         await tx.wait();
         const state = await contract.getGameState();
         setChainState({
